@@ -1,6 +1,7 @@
 import { db } from '@/lib/db/client'
 import { gyms, gymSettings } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
+import { monthStart, monthStartDate } from '@/lib/db/time'
 
 export interface KpiData {
   activeMembers: number
@@ -74,8 +75,8 @@ function unpaidBaseSql(gymId: string, gymTimezone: string) {
   return sql`
     month_ts AS (
       SELECT
-        (date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone}) AS start_ts,
-        date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date AS start_date
+        ${monthStart(gymTimezone)} AS start_ts,
+        ${monthStartDate(gymTimezone)} AS start_date
     ),
     unpaid_enrolled AS (
       SELECT DISTINCT ON (e.member_id)
@@ -141,13 +142,13 @@ export async function getKpis(
           WHERE visited_at >= now() - interval '7 days'
         )::int AS visited_7d,
         COUNT(DISTINCT member_id) FILTER (
-          WHERE visited_at >= (date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})
+          WHERE visited_at >= ${monthStart(gymTimezone)}
         )::int AS visited_month
       FROM visits
       WHERE gym_id = ${gymId}::uuid
         AND visited_at >= LEAST(
           now() - interval '7 days',
-          (date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})
+          ${monthStart(gymTimezone)}
         )
     `),
 
@@ -192,13 +193,13 @@ export async function getKpis(
               (SELECT COUNT(*)::int FROM visits v
                WHERE v.member_id = m.id AND v.gym_id = ${gymId}::uuid
                AND v.over_limit = 'false'
-               AND v.visited_at >= (date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})),
+               AND v.visited_at >= ${monthStart(gymTimezone)}),
               0
             )
           + COALESCE(
               (SELECT SUM(ca.amount)::int FROM credit_adjustments ca
                WHERE ca.member_id = m.id AND ca.gym_id = ${gymId}::uuid
-               AND ca.date >= date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date),
+               AND ca.date >= ${monthStartDate(gymTimezone)}),
               0
             )
         ) AS available_credits
@@ -333,8 +334,8 @@ export async function getVisitsChartData(
   const rows = await db.execute<{ month_key: string; unique_members: number }>(sql`
     WITH months AS (
       SELECT generate_series(
-        date_trunc('month', now() AT TIME ZONE ${gymTimezone}) - interval '11 months',
-        date_trunc('month', now() AT TIME ZONE ${gymTimezone}),
+        ${monthStart(gymTimezone)} - interval '11 months',
+        ${monthStart(gymTimezone)},
         interval '1 month'
       )::date AS month_start
     )

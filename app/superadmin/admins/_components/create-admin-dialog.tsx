@@ -22,14 +22,14 @@ import {
 } from '@/components/ui/select'
 import type { Gym } from '@/lib/db/schema'
 
-type ActionState = { error?: string; success?: boolean } | undefined
+type ActionState = { error: string } | { success: true } | undefined
 
 export function CreateAdminDialog({ gyms }: { gyms: Gym[] }) {
   const [open, setOpen] = useState(false)
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_, fd) => {
       const result = await createAdminAction(fd)
-      if (result?.success) setOpen(false)
+      if (result && 'success' in result) setOpen(false)
       return result
     },
     undefined
@@ -88,7 +88,7 @@ export function CreateAdminDialog({ gyms }: { gyms: Gym[] }) {
             </Select>
           </div>
 
-          {state?.error && (
+          {state && 'error' in state && (
             <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
               {state.error}
             </p>

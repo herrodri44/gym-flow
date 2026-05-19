@@ -1,11 +1,9 @@
 'use server'
 
-import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { gyms, gymAdmins, members } from '@/lib/db/schema'
+import { gyms, members } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
-import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
+import { requireGymAdmin } from '@/lib/auth/context'
 import {
   validateFichaje,
   validateMemberFichaje,
@@ -21,40 +19,27 @@ type RegisteredResult = {
   creditsLeft: number | null
 }
 
-async function getAdminContext() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'gym_admin') return null
-
-  const cookieStore = await cookies()
-  const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)?.value
-  if (!gymId) return null
-
-  const [assignment] = await db
-    .select({ id: gymAdmins.id })
-    .from(gymAdmins)
-    .where(and(eq(gymAdmins.gymId, gymId), eq(gymAdmins.userId, user.id)))
-    .limit(1)
-
-  if (!assignment) return null
+// Extends the base gym admin context with the gym's timezone, which is
+// required for all fichaje domain functions.
+async function getContext() {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return null
 
   const [gym] = await db
-    .select({ id: gyms.id, timezone: gyms.timezone })
+    .select({ timezone: gyms.timezone })
     .from(gyms)
-    .where(eq(gyms.id, gymId))
+    .where(eq(gyms.id, ctx.gymId))
     .limit(1)
 
   if (!gym) return null
-  return { user, gymId: gym.id, gymTimezone: gym.timezone }
+  return { ...ctx, gymTimezone: gym.timezone }
 }
 
 // Search and validate — no side effects. Use to preview result before registering.
 export async function searchFichajeAction(
   query: string,
 ): Promise<FichajeResult | ErrorResult> {
-  const ctx = await getAdminContext()
+  const ctx = await getContext()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
   return validateFichaje(query, ctx.gymId, ctx.gymTimezone, 'fichaje_admin')
@@ -64,7 +49,7 @@ export async function searchFichajeAction(
 export async function validateMemberFichajeAction(
   memberId: string,
 ): Promise<Exclude<FichajeResult, { status: 'multiple_matches' } | { status: 'not_found' }> | ErrorResult> {
-  const ctx = await getAdminContext()
+  const ctx = await getContext()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
   const [member] = await db
@@ -86,7 +71,7 @@ export async function validateMemberFichajeAction(
 export async function registerFichajeAction(
   memberId: string,
 ): Promise<RegisteredResult | Exclude<FichajeResult, { status: 'ok' | 'over_limit_allowed' | 'multiple_matches' | 'not_found' }> | ErrorResult> {
-  const ctx = await getAdminContext()
+  const ctx = await getContext()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
   const [member] = await db

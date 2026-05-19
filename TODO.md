@@ -47,19 +47,18 @@ function. See CONVENTIONS.md for the correct pattern.
 
 ### LOW — single query or simple enough to defer
 
-- [ ] **`app/admin/(protected)/analytics/page.tsx`** — already delegates to
-  three domain functions but fetches `gyms.timezone` inline first. Move that
-  fetch inside each domain function (they already accept `gymTimezone` as a
-  param — caller should not need to pre-fetch it).
+- [x] **`app/admin/(protected)/analytics/page.tsx`** — added `getAnalyticsData(gymId)`
+  wrapper to `lib/domain/analytics.ts`. Fetches timezone once then fires all
+  three chart functions in parallel. Inline timezone query removed from page.
 
-- [ ] **`app/admin/(protected)/layout.tsx`** — 2 parallel JOIN queries inline
-  (active gym lookup, all assigned gyms). This is a layout, not a page, but
-  the same rule applies. Extract to `lib/domain/admin.ts` →
-  `getAdminLayoutData(userId, activeGymId)`.
+- [x] **`app/admin/(protected)/layout.tsx`** — extracted to `lib/domain/admin.ts`
+  → `getAdminLayoutData(userId, activeGymId)`. Also fixed a bug: the original
+  query filtered only by `userId`, so multi-gym admins could see the wrong gym
+  name in the navbar after switching gyms. Now filters by both `activeGymId`
+  and `userId`, so the cookie is validated and the correct name is always shown.
 
-- [ ] **`app/admin/select-gym/page.tsx`** — 1 JOIN query inline (gyms +
-  gymAdmins for this user). Extract to `lib/domain/admin.ts` →
-  `getAssignedGyms(userId)`.
+- [x] **`app/admin/select-gym/page.tsx`** — extracted to `lib/domain/admin.ts`
+  → `getAssignedGyms(userId)`. Single JOIN query moved to domain.
 
 ---
 
@@ -67,25 +66,25 @@ function. See CONVENTIONS.md for the correct pattern.
 
 ### MEDIUM
 
-- [ ] **Timezone SQL fragment duplicated 10+ times** — the expression
-  `date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone}`
-  is copy-pasted across `lib/domain/credits.ts`, `fichaje.ts`, `dashboard.ts`,
-  `analytics.ts`, and multiple pages. Extract to `lib/db/time.ts` with helpers
-  `monthStart(tz)` and `dayStart(tz)`. One place to fix a timezone bug.
+- [x] **Timezone SQL fragment duplicated 10+ times** — extracted to `lib/db/time.ts`
+  with helpers `monthStart(tz)`, `monthStartDate(tz)`, and `dayStart(tz)`.
+  Replaced 16 occurrences across 6 files (`credits.ts`, `fichaje.ts`, `dashboard.ts`,
+  `member.ts`, `member-detail.ts`, `members-list.ts`). One place to fix a timezone bug.
 
-- [ ] **User creation has no transaction boundary** —
-  `app/superadmin/admins/actions.ts` calls Supabase Auth API then inserts into
-  `profiles` and `gymAdmins` sequentially with no compensation. If the
-  `gymAdmins` insert fails, an orphaned auth user is left behind. Extract to
-  `lib/domain/users.ts` → `createGymAdmin({...})` with explicit rollback of
-  the auth user on DB failure.
+- [x] **User creation has no transaction boundary** — extracted to
+  `lib/domain/users.ts` → `createGymAdmin({...})`. The two DB inserts
+  (`profiles` + `gymAdmins`) now run inside `db.transaction()`; on failure,
+  the catch block calls `adminClient.auth.admin.deleteUser(userId)` to remove
+  the orphaned auth user before returning the error.
 
-- [ ] **Auth checks duplicated across 3 layers** — `proxy.ts` (middleware),
-  `app/admin/(protected)/layout.tsx` (layout guard), and individual actions
-  each independently call `supabase.auth.getUser()` and check
-  `app_metadata.role`. Centralizing into `lib/auth/context.ts` with typed
-  helpers (`requireGymAdmin()`, `requireSuperAdmin()`) would eliminate
-  boilerplate and give typed session context to callers.
+- [x] **Auth checks duplicated across 3 layers** — centralized into
+  `lib/auth/context.ts` with `requireGymAdmin()` (returns `{ user, gymId }` or
+  null; also verifies DB assignment) and `requireSuperAdmin()` (returns
+  `{ user }` or null). Replaced 5 copy-pasted `getAuthContext()` functions
+  in `payments`, `settings`, `plans`, `members`, `check-in` actions, and 2
+  inline superadmin checks. `proxy.ts` (different Supabase client),
+  `layout.tsx` (redirects), and `select-gym/actions.ts` (sets the cookie)
+  are intentionally left as-is.
 
 ### LOW
 

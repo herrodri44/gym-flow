@@ -1,8 +1,7 @@
+// Auth lives here; data fetching is in lib/domain/admin.ts.
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { db } from '@/lib/db/client'
-import { gyms, gymAdmins } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { getAssignedGyms } from '@/lib/domain/admin'
 import { selectGymAction } from './actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,12 +11,7 @@ export default async function SelectGymPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const assignedGyms = await db
-    .select({ id: gyms.id, name: gyms.name, timezone: gyms.timezone })
-    .from(gyms)
-    .innerJoin(gymAdmins, eq(gymAdmins.gymId, gyms.id))
-    .where(eq(gymAdmins.userId, user.id))
-    .orderBy(gyms.name)
+  const assignedGyms = await getAssignedGyms(user.id)
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">

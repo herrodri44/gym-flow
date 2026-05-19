@@ -1,35 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { paymentRecords, gymAdmins } from '@/lib/db/schema'
+import { paymentRecords } from '@/lib/db/schema'
 import { and, eq, lt, sql } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
-import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
+import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
 
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'gym_admin') return null
-
-  const cookieStore = await cookies()
-  const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)?.value
-  if (!gymId) return null
-
-  const [assignment] = await db
-    .select({ id: gymAdmins.id })
-    .from(gymAdmins)
-    .where(and(eq(gymAdmins.gymId, gymId), eq(gymAdmins.userId, user.id)))
-    .limit(1)
-
-  if (!assignment) return null
-  return { user, gymId }
-}
-
 export async function registerPaymentAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const memberId = formData.get('memberId') as string
@@ -66,7 +45,7 @@ export async function registerPaymentAction(formData: FormData) {
 }
 
 export async function updatePaymentStatusAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const paymentId = formData.get('paymentId') as string
@@ -89,7 +68,7 @@ export async function updatePaymentStatusAction(formData: FormData) {
 }
 
 export async function markOverdueAction() {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   await db
@@ -108,7 +87,7 @@ export async function markOverdueAction() {
 }
 
 export async function deletePaymentAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const paymentId = formData.get('paymentId') as string

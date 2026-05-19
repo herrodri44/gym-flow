@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db/client'
 import { gyms, gymSettings } from '@/lib/db/schema'
-import { createClient } from '@/lib/supabase/server'
+import { requireSuperAdmin } from '@/lib/auth/context'
 
 function slugify(name: string) {
   return name
@@ -16,11 +16,7 @@ function slugify(name: string) {
 }
 
 export async function createGymAction(formData: FormData) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'superadmin') {
-    return { error: 'No autorizado' }
-  }
+  if (!await requireSuperAdmin()) return { error: 'No autorizado' }
 
   const name = (formData.get('name') as string).trim()
   const timezone = (formData.get('timezone') as string) || 'America/Argentina/Buenos_Aires'

@@ -7,7 +7,7 @@ import {
   gymSettings,
 } from '@/lib/db/schema'
 import { and, eq, ilike, or, gte } from 'drizzle-orm'
-import { sql } from 'drizzle-orm'
+import { dayStart } from '@/lib/db/time'
 import { getAvailableCredits } from './credits'
 
 export type MemberSummary = {
@@ -90,7 +90,7 @@ export async function validateMemberFichaje(
   gymTimezone: string,
 ): Promise<Exclude<FichajeResult, { status: 'multiple_matches' } | { status: 'not_found' }>> {
   // Rule: at most one visit per member per gym per calendar day (gym timezone)
-  const todayStart = sql`(date_trunc('day', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
+  const todayStart = dayStart(gymTimezone)
 
   const [existing] = await db
     .select({ id: visits.id })

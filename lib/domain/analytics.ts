@@ -1,5 +1,6 @@
 import { db } from '@/lib/db/client'
-import { sql } from 'drizzle-orm'
+import { gyms } from '@/lib/db/schema'
+import { eq, sql } from 'drizzle-orm'
 
 export interface DailyVisit {
   label: string  // 'DD/MM'
@@ -24,6 +25,30 @@ const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep'
 function toMonthLabel(yyyyMm: string): string {
   const [year, month] = yyyyMm.split('-')
   return `${MONTHS_ES[Number(month) - 1]} ${year.slice(2)}`
+}
+
+export type AnalyticsData = {
+  dailyVisits: DailyVisit[]
+  heatmap: HeatmapCell[]
+  paymentsTrend: PaymentTrendPoint[]
+}
+
+export async function getAnalyticsData(gymId: string): Promise<AnalyticsData> {
+  const [gymRow] = await db
+    .select({ timezone: gyms.timezone })
+    .from(gyms)
+    .where(eq(gyms.id, gymId))
+    .limit(1)
+
+  const gymTimezone = gymRow?.timezone ?? 'America/Argentina/Buenos_Aires'
+
+  const [dailyVisits, heatmap, paymentsTrend] = await Promise.all([
+    getDailyVisits(gymId, gymTimezone),
+    getHeatmapData(gymId, gymTimezone),
+    getPaymentsTrend(gymId),
+  ])
+
+  return { dailyVisits, heatmap, paymentsTrend }
 }
 
 // Visits per calendar day for the last 30 days (inclusive), in gym timezone

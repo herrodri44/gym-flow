@@ -1,6 +1,7 @@
 import { db } from '@/lib/db/client'
 import { gyms, members, enrollments, membershipPlans, visits, paymentRecords } from '@/lib/db/schema'
 import { and, asc, count, eq, exists, gte, ilike, inArray, lte, max, or, sql } from 'drizzle-orm'
+import { monthStart } from '@/lib/db/time'
 
 export const MEMBERS_PAGE_SIZE = 25
 
@@ -144,7 +145,7 @@ export async function getMembersList(
                 eq(visits.overLimit, 'false'),
                 gte(
                   visits.visitedAt,
-                  sql`(date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
+                  monthStart(gymTimezone)
                 )
               )
             )

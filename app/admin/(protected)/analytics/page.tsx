@@ -1,10 +1,8 @@
+// Auth lives in the layout; all data fetching is in lib/domain/analytics.ts.
 import { cookies } from 'next/headers'
-import { eq } from 'drizzle-orm'
-import { db } from '@/lib/db/client'
-import { gyms } from '@/lib/db/schema'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
+import { getAnalyticsData } from '@/lib/domain/analytics'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { getDailyVisits, getHeatmapData, getPaymentsTrend } from '@/lib/domain/analytics'
 import { DailyVisitsChart } from './_components/daily-visits-chart'
 import { HeatmapChart } from './_components/heatmap-chart'
 import { PaymentsTrendChart } from './_components/payments-trend-chart'
@@ -13,19 +11,7 @@ export default async function AnalyticsPage() {
   const cookieStore = await cookies()
   const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)!.value
 
-  const [gym] = await db
-    .select({ timezone: gyms.timezone })
-    .from(gyms)
-    .where(eq(gyms.id, gymId))
-    .limit(1)
-
-  const gymTimezone = gym?.timezone ?? 'America/Argentina/Buenos_Aires'
-
-  const [dailyVisits, heatmap, paymentsTrend] = await Promise.all([
-    getDailyVisits(gymId, gymTimezone),
-    getHeatmapData(gymId, gymTimezone),
-    getPaymentsTrend(gymId),
-  ])
+  const { dailyVisits, heatmap, paymentsTrend } = await getAnalyticsData(gymId)
 
   return (
     <div className="space-y-8">

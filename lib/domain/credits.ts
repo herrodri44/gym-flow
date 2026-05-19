@@ -1,6 +1,7 @@
 import { db } from '@/lib/db/client'
 import { visits, enrollments, membershipPlans, creditAdjustments } from '@/lib/db/schema'
-import { and, count, eq, gte, sql, sum } from 'drizzle-orm'
+import { and, count, eq, gte, sum } from 'drizzle-orm'
+import { monthStart, monthStartDate } from '@/lib/db/time'
 
 // Returns credits remaining for the current calendar month in the gym's timezone.
 // Returns null if the member has no active enrollment.
@@ -29,8 +30,6 @@ export async function getAvailableCredits(
   if (!enrollment) return null
   if (enrollment.planType === 'unlimited') return Infinity
 
-  const monthStart = sql`(date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
-
   const [{ visitCount }] = await db
     .select({ visitCount: count() })
     .from(visits)
@@ -39,7 +38,7 @@ export async function getAvailableCredits(
         eq(visits.memberId, memberId),
         eq(visits.gymId, gymId),
         eq(visits.overLimit, 'false'),
-        gte(visits.visitedAt, monthStart)
+        gte(visits.visitedAt, monthStart(gymTimezone))
       )
     )
 
@@ -50,7 +49,7 @@ export async function getAvailableCredits(
       and(
         eq(creditAdjustments.memberId, memberId),
         eq(creditAdjustments.gymId, gymId),
-        gte(creditAdjustments.date, sql`date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date`)
+        gte(creditAdjustments.date, monthStartDate(gymTimezone))
       )
     )
 

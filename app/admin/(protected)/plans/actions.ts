@@ -1,35 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { membershipPlans, enrollments, members, gymAdmins } from '@/lib/db/schema'
+import { membershipPlans, enrollments, members } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
-import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
+import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
 
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'gym_admin') return null
-
-  const cookieStore = await cookies()
-  const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)?.value
-  if (!gymId) return null
-
-  const [assignment] = await db
-    .select({ id: gymAdmins.id })
-    .from(gymAdmins)
-    .where(and(eq(gymAdmins.gymId, gymId), eq(gymAdmins.userId, user.id)))
-    .limit(1)
-
-  if (!assignment) return null
-  return { user, gymId }
-}
-
 export async function createPlanAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const name = (formData.get('name') as string)?.trim()
@@ -65,7 +44,7 @@ export async function createPlanAction(formData: FormData) {
 }
 
 export async function updatePlanAction(planId: string, formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const [existing] = await db
@@ -106,7 +85,7 @@ export async function updatePlanAction(planId: string, formData: FormData) {
 }
 
 export async function archivePlanAction(planId: string) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const [existing] = await db
@@ -129,7 +108,7 @@ export async function archivePlanAction(planId: string) {
 // ─── Enrollments ──────────────────────────────────────────────────────────────
 
 export async function enrollMemberAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const memberId = (formData.get('memberId') as string)?.trim()
@@ -138,7 +117,6 @@ export async function enrollMemberAction(formData: FormData) {
 
   if (!memberId || !planId) return { error: 'Faltan datos requeridos' }
 
-  // Verify member belongs to this gym
   const [member] = await db
     .select({ id: members.id })
     .from(members)
@@ -147,7 +125,6 @@ export async function enrollMemberAction(formData: FormData) {
 
   if (!member) return { error: 'Socio no encontrado' }
 
-  // Verify plan belongs to this gym
   const [plan] = await db
     .select({ id: membershipPlans.id })
     .from(membershipPlans)
@@ -156,7 +133,6 @@ export async function enrollMemberAction(formData: FormData) {
 
   if (!plan) return { error: 'Plan no encontrado' }
 
-  // Deactivate any existing active enrollment for this member in this gym
   await db
     .update(enrollments)
     .set({ active: 'false', endedAt: new Date() })
@@ -168,7 +144,6 @@ export async function enrollMemberAction(formData: FormData) {
       )
     )
 
-  // Create new enrollment
   await db.insert(enrollments).values({
     gymId: ctx.gymId,
     memberId,

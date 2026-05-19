@@ -34,6 +34,7 @@ import {
   paymentRecords,
 } from '@/lib/db/schema'
 import { and, count, desc, eq, gte, lte, max, sql, sum } from 'drizzle-orm'
+import { monthStart, monthStartDate } from '@/lib/db/time'
 
 export type MemberPortalData = {
   member: {
@@ -103,8 +104,8 @@ export async function getMemberPortalData(userId: string): Promise<MemberPortalD
 
   const { memberId, gymId, gymTimezone } = row
 
-  const monthStart = sql`(date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
-  const monthStartDate = sql`date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date`
+  const mStart = monthStart(gymTimezone)
+  const mStartDate = monthStartDate(gymTimezone)
 
   // Round trip 2: six independent queries in parallel.
   const [
@@ -150,7 +151,7 @@ export async function getMemberPortalData(userId: string): Promise<MemberPortalD
           eq(visits.memberId, memberId),
           eq(visits.gymId, gymId),
           eq(visits.overLimit, 'false'),
-          gte(visits.visitedAt, monthStart)
+          gte(visits.visitedAt, mStart)
         )
       ),
 
@@ -162,7 +163,7 @@ export async function getMemberPortalData(userId: string): Promise<MemberPortalD
         and(
           eq(creditAdjustments.memberId, memberId),
           eq(creditAdjustments.gymId, gymId),
-          gte(creditAdjustments.date, monthStartDate)
+          gte(creditAdjustments.date, mStartDate)
         )
       ),
 

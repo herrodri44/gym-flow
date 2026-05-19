@@ -1,35 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { members, gymAdmins, creditAdjustments, profiles } from '@/lib/db/schema'
+import { members, creditAdjustments, profiles } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
-
-async function getAuthContext() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user || user.app_metadata?.role !== 'gym_admin') return null
-
-  const cookieStore = await cookies()
-  const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)?.value
-  if (!gymId) return null
-
-  const [assignment] = await db
-    .select({ id: gymAdmins.id })
-    .from(gymAdmins)
-    .where(and(eq(gymAdmins.gymId, gymId), eq(gymAdmins.userId, user.id)))
-    .limit(1)
-
-  if (!assignment) return null
-  return { user, gymId }
-}
+import { requireGymAdmin } from '@/lib/auth/context'
 
 export async function createMemberAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const fullName = (formData.get('fullName') as string)?.trim()
@@ -45,7 +24,6 @@ export async function createMemberAction(formData: FormData) {
   try {
     let userId: string | null = null
 
-    // If email provided, create a Supabase Auth user (password = document number)
     if (email) {
       const adminSupabase = createAdminClient()
       const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
@@ -92,7 +70,7 @@ export async function createMemberAction(formData: FormData) {
 }
 
 export async function updateMemberAction(memberId: string, formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const [existing] = await db
@@ -130,7 +108,7 @@ export async function updateMemberAction(memberId: string, formData: FormData) {
 }
 
 export async function deleteMemberAction(memberId: string) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const [existing] = await db
@@ -151,7 +129,7 @@ export async function deleteMemberAction(memberId: string) {
 }
 
 export async function createCreditAdjustmentAction(formData: FormData) {
-  const ctx = await getAuthContext()
+  const ctx = await requireGymAdmin()
   if (!ctx) return { error: 'No autorizado' }
 
   const memberId = (formData.get('memberId') as string)?.trim()
