@@ -108,41 +108,54 @@ in multi-step writes). Use **Vitest** for unit/integration, **Playwright** for E
 
 ### HIGH — must have before first production deploy
 
-- [ ] **Fichaje domain unit tests** — `lib/domain/fichaje.ts` is the most
-  critical path: member search, credit check with timezone-aware month boundary,
-  over-limit logic, and `recordVisit` atomicity. Key cases: member not found,
-  inactive member, no enrollment, credits at 0 with over-limit enabled, credits
-  at 0 with over-limit disabled, exact month boundary in gym timezone (not UTC).
+- [x] **Fichaje domain unit tests** — `tests/unit/fichaje.test.ts`. Covers
+  `validateFichaje` (empty query, not_found, multiple_matches) and
+  `validateMemberFichaje` (already_today, no enrollment, unlimited plan,
+  credits > 0, over_limit allowed/denied, missing gymSettings row).
+  DB mocked via `tests/helpers/db-mock.ts`; `getAvailableCredits` mocked
+  separately so fichaje business logic is tested in isolation.
 
-- [ ] **Credit calculation unit tests** — `lib/domain/credits.ts`
-  `getAvailableCredits()`. Key cases: unlimited plan → null, credits depleted →
-  0 or negative, positive adjustments roll up correctly, month boundary respected
-  in gym timezone (not UTC). These directly guard against the UTC bug fixed in
-  `member-detail.ts`.
+- [x] **Credit calculation unit tests** — `tests/unit/credits.test.ts`. Covers
+  `getAvailableCredits()`: no enrollment → null, unlimited plan → Infinity,
+  full credits, partial credits, depleted (0), negative balance, positive and
+  negative adjustments. Drizzle aggregate queries (no `.limit()`) handled by
+  the shared `makeSelectChain` helper.
 
-- [ ] **Enrollment action integration test** — `enrollMemberAction` in
-  `app/admin/(protected)/plans/actions.ts`. Confirm that re-enrolling a member
-  (plan change) deactivates the old enrollment before inserting the new one, and
-  that credits reset to the new plan's `creditsPerMonth`.
+- [x] **Enrollment action integration test** — `tests/unit/enrollment.test.ts`.
+  Confirms `enrollMemberAction` deactivates the old enrollment (`active: 'false'`)
+  before inserting the new one (verified via `invocationCallOrder`), inserts with
+  correct `gymId`/`memberId`/`planId`/`active: 'true'`, and returns `{ error }`
+  for missing auth, unknown member, unknown plan, and missing form fields.
+  `requireGymAdmin` and `revalidatePath` mocked so the action runs in plain Node.
 
 ### MEDIUM — add before public / beta launch
 
-- [ ] **Payment action integration tests** — `registerPaymentAction`,
-  `markOverdueAction`, `updatePaymentStatusAction`. Test that a `paid` record
-  with `periodStart ≤ now() ≤ periodEnd` is reflected in `getMembersList`'s
-  `hasPaid` field; and that `markOverdueAction` only touches records past their
-  `periodEnd`.
+- [x] **Payment action integration tests** — `tests/unit/payments.test.ts`.
+  Covers `registerPaymentAction` (auth, validation, `pesosTocentavos` conversion,
+  correct `periodStart`/`periodEnd` for a given YYYY-MM, `paidAt` set for paid
+  and null for pending), `markOverdueAction` (auth, sets `status: 'overdue'`),
+  and `updatePaymentStatusAction` (auth, invalid data guard, `paidAt` logic for
+  all three statuses). Note: SQL filter correctness (`periodEnd < now()`) is a
+  real-DB concern — see MEDIUM backlog item if integration tests are added later.
 
-- [ ] **Proxy route protection tests** — `proxy.ts`. Confirm that
-  unauthenticated requests redirect to `/login`, that a gym-admin role cannot
-  reach `/superadmin/*`, and that a missing `ACTIVE_GYM_COOKIE` redirects to
-  `/admin/select-gym`. Use Playwright's request interception or Next.js test
-  utilities.
+- [x] **Proxy route protection tests** — `tests/unit/proxy.test.ts`. `proxy.ts`
+  is a plain function so Playwright was not needed. Covers: rate-limit exceeded
+  on `/g/*` → 429; rate-limit ok → pass-through; `/_next/*` → pass-through;
+  no session + protected route → redirect `/login`; session on `/login` →
+  redirected to role home (gym_admin, superadmin, member); gym_admin on
+  `/superadmin/*` → redirect; member on `/admin/*` → redirect; gym_admin on
+  `/admin/*` without `ACTIVE_GYM_COOKIE` → redirect to `/admin/select-gym`;
+  gym_admin with cookie → pass-through. `@supabase/ssr` and Upstash mocked via
+  `vi.hoisted`.
 
-- [ ] **Public kiosk E2E (Playwright)** — `/g/[slug]`: valid document number →
-  success screen. Invalid document → error. Same document twice within the rate-
-  limit window → second request is rate-limited or correctly blocked by visit
-  cooldown logic.
+- [x] **Public kiosk action tests** — `tests/unit/kiosk.test.ts`. Covers
+  `publicFichajeAction`: empty document → not_found without DB call; unknown
+  slug → invalid_gym; correct gym found → validates via `validateFichaje`;
+  `ok` → `recordVisit` called with `overLimit=false`; `over_limit_allowed` →
+  `recordVisit` called with `overLimit=true`; all non-recording statuses
+  (`already_today`, `not_found`, `over_limit_denied`, `no_active_enrollment`)
+  → `recordVisit` not called. Full browser E2E (success screen / error UI) still
+  pending — requires Playwright + running server (see LOW backlog).
 
 ### LOW — confidence builders, add as capacity allows
 

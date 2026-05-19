@@ -222,3 +222,24 @@ If you feel the urge to write `as unknown as X`, stop and ask: is the type
 declaration wrong, or is the function's signature wrong? Fix whichever is
 incorrect. The only acceptable use of `as` is narrowing within a type
 hierarchy (e.g. `value as SpecificSubtype`), never widening or escaping.
+
+---
+
+## Tests are mandatory for critical flows
+
+The test suite lives in `tests/unit/`. Run it with `npm test`.
+
+**Run `npm test` after every change** that touches a domain function, a
+server action, or any logic that has existing coverage. If a test breaks,
+fix it before considering the task done — do not comment out or skip tests.
+
+**Write new tests when adding or modifying critical flows.** The critical
+flows are:
+
+- Fichaje (check-in): `lib/domain/fichaje.ts`, `lib/domain/credits.ts`
+- Enrollment / plan changes: `app/admin/(protected)/plans/actions.ts`
+- Payment recording and status updates: `lib/domain/payments.ts`
+
+Any new domain function or server action that touches one of these flows
+needs a corresponding test file (or additions to an existing one) before
+the task is complete. Follow the patterns in `TESTING.md`.
