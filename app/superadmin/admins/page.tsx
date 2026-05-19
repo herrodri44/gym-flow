@@ -1,6 +1,5 @@
-import { db } from '@/lib/db/client'
-import { profiles, gyms, gymAdmins } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+// All data fetching is in lib/domain/superadmin.ts.
+import { getAdminsPageData } from '@/lib/domain/superadmin'
 import { CreateAdminDialog } from './_components/create-admin-dialog'
 import {
   Table,
@@ -13,22 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 
 export default async function AdministradoresPage() {
-  const [allGyms, admins] = await Promise.all([
-    db.select().from(gyms).orderBy(gyms.name),
-    db
-      .select({
-        id: profiles.id,
-        fullName: profiles.fullName,
-        email: profiles.email,
-        createdAt: profiles.createdAt,
-        gymName: gyms.name,
-      })
-      .from(profiles)
-      .leftJoin(gymAdmins, eq(gymAdmins.userId, profiles.id))
-      .leftJoin(gyms, eq(gyms.id, gymAdmins.gymId))
-      .where(eq(profiles.role, 'gym_admin'))
-      .orderBy(profiles.createdAt),
-  ])
+  const { allGyms, admins } = await getAdminsPageData()
 
   return (
     <div className="space-y-6">

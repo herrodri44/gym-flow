@@ -1,5 +1,6 @@
 import { db } from '@/lib/db/client'
-import { sql } from 'drizzle-orm'
+import { gyms, gymSettings } from '@/lib/db/schema'
+import { eq, sql } from 'drizzle-orm'
 
 export interface KpiData {
   activeMembers: number
@@ -34,6 +35,31 @@ export interface UnpaidMembersData {
 export interface ChartPoint {
   label: string
   value: number
+}
+
+export type DashboardContext = {
+  gymName: string
+  gymTimezone: string
+  lowCreditsThreshold: number
+}
+
+export async function getDashboardContext(gymId: string): Promise<DashboardContext> {
+  const [row] = await db
+    .select({
+      name: gyms.name,
+      timezone: gyms.timezone,
+      lowCreditsThreshold: gymSettings.lowCreditsThreshold,
+    })
+    .from(gyms)
+    .leftJoin(gymSettings, eq(gymSettings.gymId, gyms.id))
+    .where(eq(gyms.id, gymId))
+    .limit(1)
+
+  return {
+    gymName: row?.name ?? 'Mi Gym',
+    gymTimezone: row?.timezone ?? 'America/Argentina/Buenos_Aires',
+    lowCreditsThreshold: row?.lowCreditsThreshold ?? 2,
+  }
 }
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']

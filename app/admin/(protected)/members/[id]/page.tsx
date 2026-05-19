@@ -1,17 +1,8 @@
+// Auth lives in the layout; all data fetching is in lib/domain/member-detail.ts.
 import { notFound, redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
-import { and, desc, eq, gte, sql, sum } from 'drizzle-orm'
-import { db } from '@/lib/db/client'
-import {
-  gyms,
-  members,
-  enrollments,
-  membershipPlans,
-  visits,
-  creditAdjustments,
-  paymentRecords,
-} from '@/lib/db/schema'
+import { getMemberDetail } from '@/lib/domain/member-detail'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
 import { cn, formatARS } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
@@ -21,17 +12,23 @@ import { Separator } from '@/components/ui/separator'
 import { CreditAdjustmentForm } from './_components/credit-adjustment-form'
 import { EnrollMemberDialog } from './_components/enroll-member-dialog'
 
-function formatDate(dateStr: string | null | undefined) {
-  if (!dateStr) return '—'
-  const [y, m, d] = dateStr.split('-')
+function formatDate(value: string | Date | null | undefined) {
+  if (!value) return '—'
+  if (value instanceof Date) {
+    return value.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  }
+  const [y, m, d] = value.split('-')
   return `${d}/${m}/${y}`
 }
 
 function formatDateTime(ts: Date | string | null | undefined) {
   if (!ts) return '—'
   const d = typeof ts === 'string' ? new Date(ts) : ts
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-    + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  return (
+    d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
+    ' ' +
+    d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  )
 }
 
 const channelLabel: Record<string, string> = {
@@ -51,114 +48,21 @@ export default async function MemberDetailPage({
   const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)?.value
   if (!gymId) redirect('/admin/select-gym')
 
-  const [gym] = await db
-    .select({ timezone: gyms.timezone })
-    .from(gyms)
-    .where(eq(gyms.id, gymId))
-    .limit(1)
+  const data = await getMemberDetail(id, gymId)
+  if (!data) notFound()
 
-  const gymTimezone = gym?.timezone ?? 'America/Argentina/Buenos_Aires'
+  const {
+    member,
+    enrollment,
+    activePlans,
+    creditsLeft,
+    usedCreditsThisMonth,
+    recentVisits,
+    lastPayments,
+    recentAdjustments,
+  } = data
 
-  const [member] = await db
-    .select()
-    .from(members)
-    .where(and(eq(members.id, id), eq(members.gymId, gymId)))
-    .limit(1)
-
-  if (!member) notFound()
-
-  const [[enrollment], activePlans] = await Promise.all([
-    db
-      .select({
-        planId: enrollments.planId,
-        planName: membershipPlans.name,
-        planType: membershipPlans.planType,
-        creditsPerMonth: membershipPlans.creditsPerMonth,
-        startedAt: enrollments.startedAt,
-      })
-      .from(enrollments)
-      .innerJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-      .where(and(eq(enrollments.memberId, id), eq(enrollments.gymId, gymId), eq(enrollments.active, 'true')))
-      .limit(1),
-
-    db
-      .select({
-        id: membershipPlans.id,
-        name: membershipPlans.name,
-        planType: membershipPlans.planType,
-        priceArs: membershipPlans.priceArs,
-        creditsPerMonth: membershipPlans.creditsPerMonth,
-      })
-      .from(membershipPlans)
-      .where(and(eq(membershipPlans.gymId, gymId), eq(membershipPlans.active, 'true'))),
-  ])
-
-  const monthStart = sql`(date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
-
-  const [recentVisits, [{ adjustmentSum }], lastPayments] = await Promise.all([
-    db
-      .select({
-        id: visits.id,
-        visitedAt: visits.visitedAt,
-        channel: visits.channel,
-        overLimit: visits.overLimit,
-      })
-      .from(visits)
-      .where(and(eq(visits.memberId, id), eq(visits.gymId, gymId)))
-      .orderBy(desc(visits.visitedAt))
-      .limit(30),
-
-    db
-      .select({ adjustmentSum: sum(creditAdjustments.amount) })
-      .from(creditAdjustments)
-      .where(
-        and(
-          eq(creditAdjustments.memberId, id),
-          eq(creditAdjustments.gymId, gymId),
-          gte(creditAdjustments.date, sql`date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date`)
-        )
-      ),
-
-    db
-      .select({
-        id: paymentRecords.id,
-        amountArs: paymentRecords.amountArs,
-        status: paymentRecords.status,
-        periodStart: paymentRecords.periodStart,
-        periodEnd: paymentRecords.periodEnd,
-        paidAt: paymentRecords.paidAt,
-      })
-      .from(paymentRecords)
-      .where(and(eq(paymentRecords.memberId, id), eq(paymentRecords.gymId, gymId)))
-      .orderBy(desc(paymentRecords.periodStart))
-      .limit(12),
-  ])
-
-  const recentAdjustments = await db
-    .select({
-      id: creditAdjustments.id,
-      amount: creditAdjustments.amount,
-      date: creditAdjustments.date,
-      notes: creditAdjustments.notes,
-    })
-    .from(creditAdjustments)
-    .where(and(eq(creditAdjustments.memberId, id), eq(creditAdjustments.gymId, gymId)))
-    .orderBy(desc(creditAdjustments.date))
-    .limit(20)
-
-  const usedCreditsThisMonth = recentVisits.filter((v) => {
-    const d = new Date(v.visitedAt as Date)
-    const now = new Date()
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && v.overLimit === 'false'
-  }).length
-
-  const adjustments = Number(adjustmentSum ?? 0)
   const isUnlimited = enrollment?.planType === 'unlimited'
-  const creditsLeft = isUnlimited
-    ? null
-    : enrollment
-      ? (enrollment.creditsPerMonth ?? 0) - usedCreditsThisMonth + adjustments
-      : null
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -226,7 +130,11 @@ export default async function MemberDetailPage({
                     <dd
                       className={cn(
                         'font-semibold',
-                        (creditsLeft ?? 0) <= 0 ? 'text-red-600' : (creditsLeft ?? 0) <= 2 ? 'text-yellow-600' : 'text-green-600'
+                        (creditsLeft ?? 0) <= 0
+                          ? 'text-red-600'
+                          : (creditsLeft ?? 0) <= 2
+                            ? 'text-yellow-600'
+                            : 'text-green-600'
                       )}
                     >
                       {creditsLeft} restantes
@@ -265,10 +173,18 @@ export default async function MemberDetailPage({
                 <div>
                   <span className="font-medium">{formatARS(p.amountArs)}</span>
                   <span className="ml-3 text-zinc-500">
-                    {formatDate(p.periodStart as unknown as string)} – {formatDate(p.periodEnd as unknown as string)}
+                    {formatDate(p.periodStart)} – {formatDate(p.periodEnd)}
                   </span>
                 </div>
-                <Badge variant={p.status === 'paid' ? 'default' : p.status === 'overdue' ? 'destructive' : 'secondary'}>
+                <Badge
+                  variant={
+                    p.status === 'paid'
+                      ? 'default'
+                      : p.status === 'overdue'
+                        ? 'destructive'
+                        : 'secondary'
+                  }
+                >
                   {p.status === 'paid' ? 'Pagado' : p.status === 'overdue' ? 'Vencido' : 'Pendiente'}
                 </Badge>
               </div>

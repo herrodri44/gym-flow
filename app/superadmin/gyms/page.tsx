@@ -1,6 +1,5 @@
-import { db } from '@/lib/db/client'
-import { gyms, gymAdmins } from '@/lib/db/schema'
-import { count, eq } from 'drizzle-orm'
+// All data fetching is in lib/domain/superadmin.ts.
+import { getGymsPageData } from '@/lib/domain/superadmin'
 import { CreateGymDialog } from './_components/create-gym-dialog'
 import {
   Table,
@@ -13,19 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 
 export default async function GimnasiosPage() {
-  const rows = await db
-    .select({
-      id: gyms.id,
-      name: gyms.name,
-      slug: gyms.slug,
-      timezone: gyms.timezone,
-      createdAt: gyms.createdAt,
-      adminCount: count(gymAdmins.id),
-    })
-    .from(gyms)
-    .leftJoin(gymAdmins, eq(gymAdmins.gymId, gyms.id))
-    .groupBy(gyms.id)
-    .orderBy(gyms.createdAt)
+  const rows = await getGymsPageData()
 
   return (
     <div className="space-y-6">

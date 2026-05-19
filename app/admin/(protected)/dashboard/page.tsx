@@ -1,11 +1,15 @@
+// Auth lives in the layout; all data fetching is in lib/domain/dashboard.ts.
 import Link from 'next/link'
 import { cookies } from 'next/headers'
-import { eq } from 'drizzle-orm'
-import { db } from '@/lib/db/client'
-import { gyms, gymSettings } from '@/lib/db/schema'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
 import { cn, formatARS } from '@/lib/utils'
-import { getKpis, getUnpaidMembers, getVisitsChartData, type UnpaidMember } from '@/lib/domain/dashboard'
+import {
+  getDashboardContext,
+  getKpis,
+  getUnpaidMembers,
+  getVisitsChartData,
+  type UnpaidMember,
+} from '@/lib/domain/dashboard'
 import { PaymentBarChart } from './_components/payment-bar-chart'
 import { VisitsAreaChart } from './_components/visits-area-chart'
 
@@ -13,13 +17,7 @@ export default async function DashboardPage() {
   const cookieStore = await cookies()
   const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)!.value
 
-  const [[gym], [settings]] = await Promise.all([
-    db.select({ name: gyms.name, timezone: gyms.timezone }).from(gyms).where(eq(gyms.id, gymId)).limit(1),
-    db.select({ lowCreditsThreshold: gymSettings.lowCreditsThreshold }).from(gymSettings).where(eq(gymSettings.gymId, gymId)).limit(1),
-  ])
-
-  const gymTimezone = gym?.timezone ?? 'America/Argentina/Buenos_Aires'
-  const lowCreditsThreshold = settings?.lowCreditsThreshold ?? 2
+  const { gymName, gymTimezone, lowCreditsThreshold } = await getDashboardContext(gymId)
 
   const [kpis, unpaidMembers, visitsChart] = await Promise.all([
     getKpis(gymId, gymTimezone, lowCreditsThreshold),
@@ -27,7 +25,6 @@ export default async function DashboardPage() {
     getVisitsChartData(gymId, gymTimezone),
   ])
 
-  const gymName = gym?.name ?? 'Mi Gym'
   const totalUnpaid = unpaidMembers.visiting.length + unpaidMembers.absent.length
   const today = new Date().toLocaleDateString('es-AR', {
     weekday: 'long',

@@ -1,23 +1,18 @@
+// Auth lives here; all data fetching is in lib/domain/member.ts.
+// See the convention comment at the top of that file.
 import { redirect } from 'next/navigation'
-import { and, desc, eq, gte, lte, max, sql, sum } from 'drizzle-orm'
 import { createClient } from '@/lib/supabase/server'
-import { db } from '@/lib/db/client'
-import {
-  gyms,
-  members,
-  enrollments,
-  membershipPlans,
-  visits,
-  creditAdjustments,
-  paymentRecords,
-} from '@/lib/db/schema'
+import { getMemberPortalData } from '@/lib/domain/member'
 import { cn, formatARS } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 
-function formatDate(dateStr: string | null | undefined) {
-  if (!dateStr) return '—'
-  const [y, m, d] = dateStr.split('-')
+function formatDate(value: string | Date | null | undefined) {
+  if (!value) return '—'
+  if (value instanceof Date) {
+    return value.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  }
+  const [y, m, d] = value.split('-')
   return `${d}/${m}/${y}`
 }
 
@@ -36,14 +31,9 @@ export default async function PortalAccountPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Find the member profile linked to this user
-  const [member] = await db
-    .select()
-    .from(members)
-    .where(and(eq(members.userId, user.id), eq(members.active, 'true')))
-    .limit(1)
+  const data = await getMemberPortalData(user.id)
 
-  if (!member) {
+  if (!data) {
     return (
       <div className="text-center py-16">
         <p className="text-zinc-500">No encontramos tu perfil de socio.</p>
@@ -52,112 +42,12 @@ export default async function PortalAccountPage() {
     )
   }
 
-  const [gym] = await db
-    .select({ name: gyms.name, timezone: gyms.timezone })
-    .from(gyms)
-    .where(eq(gyms.id, member.gymId))
-    .limit(1)
-
-  const gymTimezone = gym?.timezone ?? 'America/Argentina/Buenos_Aires'
-  const gymName = gym?.name ?? 'Gimnasio'
-
-  const [enrollment] = await db
-    .select({
-      planName: membershipPlans.name,
-      planType: membershipPlans.planType,
-      creditsPerMonth: membershipPlans.creditsPerMonth,
-      priceArs: membershipPlans.priceArs,
-      startedAt: enrollments.startedAt,
-    })
-    .from(enrollments)
-    .innerJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-    .where(
-      and(
-        eq(enrollments.memberId, member.id),
-        eq(enrollments.gymId, member.gymId),
-        eq(enrollments.active, 'true')
-      )
-    )
-    .limit(1)
-
-  const monthStart = sql`(date_trunc('month', now() AT TIME ZONE ${gymTimezone}) AT TIME ZONE ${gymTimezone})`
-
-  const [[lastVisitRow], [{ visitCount }], [{ adjustmentSum }], hasPaidRow, recentPayments] =
-    await Promise.all([
-      db
-        .select({ lastVisit: max(visits.visitedAt) })
-        .from(visits)
-        .where(and(eq(visits.memberId, member.id), eq(visits.gymId, member.gymId))),
-
-      db
-        .select({ visitCount: sql<number>`count(*)` })
-        .from(visits)
-        .where(
-          and(
-            eq(visits.memberId, member.id),
-            eq(visits.gymId, member.gymId),
-            eq(visits.overLimit, 'false'),
-            gte(visits.visitedAt, monthStart)
-          )
-        ),
-
-      db
-        .select({ adjustmentSum: sum(creditAdjustments.amount) })
-        .from(creditAdjustments)
-        .where(
-          and(
-            eq(creditAdjustments.memberId, member.id),
-            eq(creditAdjustments.gymId, member.gymId),
-            gte(
-              creditAdjustments.date,
-              sql`date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date`
-            )
-          )
-        ),
-
-      db
-        .select({ id: paymentRecords.id })
-        .from(paymentRecords)
-        .where(
-          and(
-            eq(paymentRecords.memberId, member.id),
-            eq(paymentRecords.gymId, member.gymId),
-            eq(paymentRecords.status, 'paid'),
-            lte(paymentRecords.periodStart, sql`now()`),
-            gte(paymentRecords.periodEnd, sql`now()`)
-          )
-        )
-        .limit(1),
-
-      db
-        .select({
-          id: paymentRecords.id,
-          amountArs: paymentRecords.amountArs,
-          status: paymentRecords.status,
-          periodStart: paymentRecords.periodStart,
-          periodEnd: paymentRecords.periodEnd,
-          paidAt: paymentRecords.paidAt,
-        })
-        .from(paymentRecords)
-        .where(and(eq(paymentRecords.memberId, member.id), eq(paymentRecords.gymId, member.gymId)))
-        .orderBy(desc(paymentRecords.periodStart))
-        .limit(6),
-    ])
-
-  const hasPaid = hasPaidRow.length > 0
-  const usedCredits = Number(visitCount ?? 0)
-  const adjustments = Number(adjustmentSum ?? 0)
-  const isUnlimited = enrollment?.planType === 'unlimited'
-  const creditsLeft = isUnlimited
-    ? null
-    : enrollment
-      ? (enrollment.creditsPerMonth ?? 0) - usedCredits + adjustments
-      : null
+  const { member, gym, enrollment, lastVisit, creditsLeft, usedCredits, hasPaid, recentPayments } = data
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm text-zinc-500">{gymName}</p>
+        <p className="text-sm text-zinc-500">{gym.name}</p>
         <h1 className="text-2xl font-semibold">{member.fullName}</h1>
       </div>
 
@@ -188,7 +78,7 @@ export default async function PortalAccountPage() {
             </div>
             <div className="flex justify-between">
               <dt className="text-zinc-500">Último ingreso</dt>
-              <dd>{formatDateTime(lastVisitRow?.lastVisit)}</dd>
+              <dd>{formatDateTime(lastVisit)}</dd>
             </div>
           </dl>
         </Card>
@@ -209,7 +99,7 @@ export default async function PortalAccountPage() {
               <div className="flex justify-between">
                 <dt className="text-zinc-500">Créditos este mes</dt>
                 <dd>
-                  {isUnlimited ? (
+                  {enrollment.planType === 'unlimited' ? (
                     <span className="text-green-600 font-semibold">Acceso ilimitado</span>
                   ) : (
                     <span
@@ -227,7 +117,7 @@ export default async function PortalAccountPage() {
                   )}
                 </dd>
               </div>
-              {!isUnlimited && (
+              {enrollment.planType !== 'unlimited' && (
                 <div className="flex justify-between">
                   <dt className="text-zinc-500">Usados este mes</dt>
                   <dd>{usedCredits} de {enrollment.creditsPerMonth}</dd>
@@ -258,8 +148,8 @@ export default async function PortalAccountPage() {
                 <div>
                   <span className="font-medium">{formatARS(p.amountArs)}</span>
                   <span className="ml-3 text-zinc-500">
-                    {formatDate(p.periodStart as unknown as string)} –{' '}
-                    {formatDate(p.periodEnd as unknown as string)}
+                    {formatDate(p.periodStart)} –{' '}
+                    {formatDate(p.periodEnd)}
                   </span>
                 </div>
                 <Badge

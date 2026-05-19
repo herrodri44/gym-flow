@@ -1,10 +1,9 @@
+// Auth lives in the layout; all data fetching is in lib/domain/payments.ts.
 import { cookies } from 'next/headers'
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
 import Link from 'next/link'
-import { db } from '@/lib/db/client'
-import { paymentRecords, members, enrollments, membershipPlans } from '@/lib/db/schema'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
 import { formatARS } from '@/lib/utils'
+import { getPaymentsPageData } from '@/lib/domain/payments'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -30,16 +29,14 @@ const statusLabel = {
   overdue: 'Vencido',
 }
 
-function formatPeriod(ts: Date | string | null) {
+function formatPeriod(ts: Date | null) {
   if (!ts) return '—'
-  const d = typeof ts === 'string' ? new Date(ts) : ts
-  return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  return ts.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
 }
 
-function formatDate(ts: Date | string | null) {
+function formatDate(ts: Date | null) {
   if (!ts) return '—'
-  const d = typeof ts === 'string' ? new Date(ts) : ts
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  return ts.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
 export default async function PaymentsPage({
@@ -47,72 +44,16 @@ export default async function PaymentsPage({
 }: {
   searchParams: Promise<{ status?: string; month?: string }>
 }) {
-  const { status: filterStatus, month: filterMonth } = await searchParams
-
+  const sp = await searchParams
   const cookieStore = await cookies()
   const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)!.value
 
-  const conditions = [eq(paymentRecords.gymId, gymId)]
+  const { payments, activeMembers, pendingOverdue } = await getPaymentsPageData(gymId, {
+    status: sp.status,
+    month: sp.month,
+  })
 
-  const validStatuses = ['paid', 'pending', 'overdue'] as const
-  if (filterStatus && validStatuses.includes(filterStatus as (typeof validStatuses)[number])) {
-    conditions.push(eq(paymentRecords.status, filterStatus as (typeof validStatuses)[number]))
-  }
-
-  if (filterMonth && /^\d{4}-\d{2}$/.test(filterMonth)) {
-    const [y, m] = filterMonth.split('-').map(Number)
-    const start = new Date(y, m - 1, 1)
-    const end = new Date(y, m, 0, 23, 59, 59)
-    conditions.push(gte(paymentRecords.periodStart, start))
-    conditions.push(lte(paymentRecords.periodStart, end))
-  }
-
-  const [payments, activeMembers] = await Promise.all([
-    db
-      .select({
-        id: paymentRecords.id,
-        amountArs: paymentRecords.amountArs,
-        status: paymentRecords.status,
-        periodStart: paymentRecords.periodStart,
-        paidAt: paymentRecords.paidAt,
-        notes: paymentRecords.notes,
-        memberName: members.fullName,
-        memberId: members.id,
-        periodEnd: paymentRecords.periodEnd,
-      })
-      .from(paymentRecords)
-      .innerJoin(members, eq(members.id, paymentRecords.memberId))
-      .where(and(...conditions))
-      .orderBy(desc(paymentRecords.periodStart), members.fullName),
-
-    db
-      .select({
-        id: members.id,
-        fullName: members.fullName,
-        documentNumber: members.documentNumber,
-        enrollmentId: enrollments.id,
-        planName: membershipPlans.name,
-        priceArs: membershipPlans.priceArs,
-      })
-      .from(members)
-      .leftJoin(
-        enrollments,
-        and(
-          eq(enrollments.memberId, members.id),
-          eq(enrollments.active, 'true'),
-          eq(enrollments.gymId, gymId)
-        )
-      )
-      .leftJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-      .where(and(eq(members.gymId, gymId), eq(members.active, 'true')))
-      .orderBy(members.fullName),
-  ])
-
-  const pendingOverdue = payments.filter(
-    (p) => p.status === 'pending' && new Date(p.periodEnd as Date) < new Date()
-  ).length
-
-  const hasFilters = !!filterStatus || !!filterMonth
+  const hasFilters = !!sp.status || !!sp.month
 
   return (
     <div className="space-y-6">
@@ -138,7 +79,7 @@ export default async function PaymentsPage({
       <form className="flex gap-3 flex-wrap items-center">
         <select
           name="status"
-          defaultValue={filterStatus ?? ''}
+          defaultValue={sp.status ?? ''}
           className="rounded-md border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
         >
           <option value="">Todos los estados</option>
@@ -149,7 +90,7 @@ export default async function PaymentsPage({
         <input
           type="month"
           name="month"
-          defaultValue={filterMonth ?? ''}
+          defaultValue={sp.month ?? ''}
           className="rounded-md border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
         <button
@@ -205,7 +146,7 @@ export default async function PaymentsPage({
                     </Link>
                   </TableCell>
                   <TableCell className="text-zinc-600 capitalize">
-                    {formatPeriod(p.periodStart as Date)}
+                    {formatPeriod(p.periodStart)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-medium">
                     {formatARS(p.amountArs)}
@@ -216,9 +157,9 @@ export default async function PaymentsPage({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-zinc-500 tabular-nums">
-                    {formatDate(p.paidAt as Date | null)}
+                    {formatDate(p.paidAt)}
                   </TableCell>
-                  <TableCell className="text-zinc-400 max-w-[200px] truncate">
+                  <TableCell className="text-zinc-400 max-w-50 truncate">
                     {p.notes ?? '—'}
                   </TableCell>
                   <TableCell>
