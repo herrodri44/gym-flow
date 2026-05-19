@@ -176,22 +176,25 @@ relevant DB state in under 5 minutes.
 
 ### HIGH — production pre-requisite
 
-- [ ] **Error tracking: Sentry** — Install `@sentry/nextjs`. Wire up
-  `instrumentation.ts` and `sentry.client.config.ts`. Server actions currently
-  return `{ error: string }` but swallow the original `Error` object — Sentry
-  should capture the original before conversion. Add `SENTRY_DSN` to env.
-  Required before any real user traffic.
+- [x] **Error tracking: Sentry** — Installed `@sentry/nextjs`. Wired up
+  `instrumentation.ts`, `sentry.client.config.ts`, `sentry.server.config.ts`,
+  and `withSentryConfig` in `next.config.ts`. Added `Sentry.captureException`
+  + try/catch in `payments/actions.ts` and `check-in/actions.ts` so DB errors
+  are captured before being converted to `{ error: string }`. See `DEBUGGING.md`
+  for the pattern to follow in new actions. Add `SENTRY_DSN` and
+  `NEXT_PUBLIC_SENTRY_DSN` to env before deploying.
 
-- [ ] **Structured logger (`lib/logger.ts`)** — A thin wrapper:
-  `logger.info(event, ctx)`, `logger.warn(...)`, `logger.error(err, ctx)`. In
-  development: human-readable `console.log`. In production: JSON lines for
-  Vercel log drain or Axiom. Shape: `{ level, event, gymId?, memberId?,
-  durationMs?, ...ctx }`. Keep it dependency-free or use `pino`.
+- [x] **Structured logger (`lib/logger.ts`)** — Dependency-free thin wrapper:
+  `logger.info(event, ctx)`, `logger.warn(...)`, `logger.error(err, ctx)`.
+  Dev: human-readable `[LEVEL] event {ctx}`. Production: JSON lines for
+  Vercel log drain or Axiom. Shape: `{ level, event, ts, gymId?, memberId?,
+  durationMs?, ...ctx }`.
 
-- [ ] **Instrument the fichaje flow** — Every check-in attempt emits a
-  structured log: `{ event: 'fichaje.attempt', gymId, memberId, channel,
-  outcome: 'allowed'|'over_limit'|'not_found'|'inactive', creditsRemaining }`.
-  This is the single flow users will call about — it must be queryable.
+- [x] **Instrument the fichaje flow** — Every check-in attempt emits a
+  structured log `{ event: 'fichaje.attempt', gymId, memberId, channel,
+  outcome, creditsRemaining }` from both `publicFichajeAction` and
+  `registerFichajeAction`. See `DEBUGGING.md` for the full field reference
+  and how to query these logs in Vercel / Axiom.
 
 ### MEDIUM
 

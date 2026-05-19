@@ -10,6 +10,8 @@ import {
   recordVisit,
   type FichajeResult,
 } from '@/lib/domain/fichaje'
+import { logger } from '@/lib/logger'
+import * as Sentry from '@sentry/nextjs'
 
 type ErrorResult = { status: 'error'; message: string }
 type RegisteredResult = {
@@ -89,7 +91,14 @@ export async function registerFichajeAction(
   const validation = await validateMemberFichaje(member, ctx.gymId, ctx.gymTimezone)
 
   if (validation.status === 'ok') {
-    await recordVisit(memberId, ctx.gymId, 'fichaje_admin', false, ctx.user.id)
+    try {
+      await recordVisit(memberId, ctx.gymId, 'fichaje_admin', false, ctx.user.id)
+    } catch (err) {
+      Sentry.captureException(err, { extra: { gymId: ctx.gymId, memberId, action: 'registerFichaje' } })
+      logger.error(err as Error, { gymId: ctx.gymId, memberId, action: 'registerFichaje' })
+      return { status: 'error', message: 'No se pudo registrar el fichaje' }
+    }
+    logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: 'allowed', creditsRemaining: validation.creditsLeft })
     return {
       status: 'registered',
       wasOverLimit: false,
@@ -99,7 +108,14 @@ export async function registerFichajeAction(
   }
 
   if (validation.status === 'over_limit_allowed') {
-    await recordVisit(memberId, ctx.gymId, 'fichaje_admin', true, ctx.user.id)
+    try {
+      await recordVisit(memberId, ctx.gymId, 'fichaje_admin', true, ctx.user.id)
+    } catch (err) {
+      Sentry.captureException(err, { extra: { gymId: ctx.gymId, memberId, action: 'registerFichaje' } })
+      logger.error(err as Error, { gymId: ctx.gymId, memberId, action: 'registerFichaje' })
+      return { status: 'error', message: 'No se pudo registrar el fichaje' }
+    }
+    logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: 'over_limit_allowed', creditsRemaining: 0 })
     return {
       status: 'registered',
       wasOverLimit: true,
@@ -108,5 +124,6 @@ export async function registerFichajeAction(
     }
   }
 
+  logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: validation.status })
   return validation
 }

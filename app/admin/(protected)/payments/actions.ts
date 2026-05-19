@@ -6,6 +6,8 @@ import { paymentRecords } from '@/lib/db/schema'
 import { and, eq, lt, sql } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
+import * as Sentry from '@sentry/nextjs'
+import { logger } from '@/lib/logger'
 
 export async function registerPaymentAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -27,18 +29,24 @@ export async function registerPaymentAction(formData: FormData) {
   const periodStart = new Date(year, monthNum - 1, 1)
   const periodEnd = new Date(year, monthNum, 0, 23, 59, 59)
 
-  await db.insert(paymentRecords).values({
-    gymId: ctx.gymId,
-    memberId,
-    enrollmentId: enrollmentId || null,
-    amountArs: pesosTocentavos(amountInput),
-    currency: 'ARS',
-    periodStart,
-    periodEnd,
-    status,
-    paidAt: status === 'paid' ? new Date() : null,
-    notes,
-  })
+  try {
+    await db.insert(paymentRecords).values({
+      gymId: ctx.gymId,
+      memberId,
+      enrollmentId: enrollmentId || null,
+      amountArs: pesosTocentavos(amountInput),
+      currency: 'ARS',
+      periodStart,
+      periodEnd,
+      status,
+      paidAt: status === 'paid' ? new Date() : null,
+      notes,
+    })
+  } catch (err) {
+    Sentry.captureException(err, { extra: { gymId: ctx.gymId, action: 'registerPayment' } })
+    logger.error(err as Error, { gymId: ctx.gymId, action: 'registerPayment' })
+    return { error: 'No se pudo guardar el pago' }
+  }
 
   revalidatePath('/admin/payments')
   return { success: true }
