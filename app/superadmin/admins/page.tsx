@@ -1,0 +1,85 @@
+import { db } from '@/lib/db/client'
+import { profiles, gyms, gymAdmins } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+import { CreateAdminDialog } from './_components/create-admin-dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+
+export default async function AdministradoresPage() {
+  const [allGyms, admins] = await Promise.all([
+    db.select().from(gyms).orderBy(gyms.name),
+    db
+      .select({
+        id: profiles.id,
+        fullName: profiles.fullName,
+        email: profiles.email,
+        createdAt: profiles.createdAt,
+        gymName: gyms.name,
+      })
+      .from(profiles)
+      .leftJoin(gymAdmins, eq(gymAdmins.userId, profiles.id))
+      .leftJoin(gyms, eq(gyms.id, gymAdmins.gymId))
+      .where(eq(profiles.role, 'gym_admin'))
+      .orderBy(profiles.createdAt),
+  ])
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Administradores</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {admins.length}{' '}
+            {admins.length === 1
+              ? 'administrador registrado'
+              : 'administradores registrados'}
+          </p>
+        </div>
+        <CreateAdminDialog gyms={allGyms} />
+      </div>
+
+      {admins.length === 0 ? (
+        <div className="rounded-lg border border-dashed py-16 text-center">
+          <p className="text-zinc-500">Todavía no hay administradores.</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Creá el primero con el botón de arriba.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-white">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Gimnasio asignado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {admins.map((admin) => (
+                <TableRow key={`${admin.id}-${admin.gymName}`}>
+                  <TableCell className="font-medium">{admin.fullName}</TableCell>
+                  <TableCell className="text-zinc-500">{admin.email}</TableCell>
+                  <TableCell>
+                    {admin.gymName ? (
+                      <Badge variant="secondary">{admin.gymName}</Badge>
+                    ) : (
+                      <span className="text-zinc-400">Sin asignar</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
