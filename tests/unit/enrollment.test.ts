@@ -101,9 +101,9 @@ describe('enrollMemberAction', () => {
     const insertOrder = mockInsert.mock.invocationCallOrder[0]
     expect(updateOrder).toBeLessThan(insertOrder)
 
-    // update sets active to 'false' and records endedAt
+    // update sets active to false and records endedAt
     const setArgs = mockSet.mock.calls[0][0] as Record<string, unknown>
-    expect(setArgs.active).toBe('false')
+    expect(setArgs.active).toBe(false)
     expect(setArgs.endedAt).toBeInstanceOf(Date)
   })
 
@@ -119,7 +119,7 @@ describe('enrollMemberAction', () => {
       string,
       unknown
     >
-    expect(insertValues.active).toBe('true')
+    expect(insertValues.active).toBe(true)
     expect(insertValues.memberId).toBe('member-1')
     expect(insertValues.planId).toBe('plan-1')
     expect(insertValues.gymId).toBe('gym-1')

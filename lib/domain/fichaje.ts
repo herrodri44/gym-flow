@@ -50,7 +50,7 @@ export async function validateFichaje(
       .where(
         and(
           eq(members.gymId, gymId),
-          eq(members.active, 'true'),
+          eq(members.active, true),
           eq(members.documentNumber, trimmed),
         ),
       )
@@ -67,7 +67,7 @@ export async function validateFichaje(
       .where(
         and(
           eq(members.gymId, gymId),
-          eq(members.active, 'true'),
+          eq(members.active, true),
           or(
             eq(members.documentNumber, trimmed),
             ilike(members.fullName, `%${trimmed}%`),
@@ -135,7 +135,7 @@ export async function recordVisit(
     memberId,
     visitedAt: new Date(),
     channel,
-    overLimit: overLimit ? 'true' : 'false',
+    overLimit,
     recordedBy: recordedBy ?? null,
   })
 }

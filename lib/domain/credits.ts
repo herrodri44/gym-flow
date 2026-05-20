@@ -22,7 +22,7 @@ export async function getAvailableCredits(
       and(
         eq(enrollments.memberId, memberId),
         eq(enrollments.gymId, gymId),
-        eq(enrollments.active, 'true')
+        eq(enrollments.active, true)
       )
     )
     .limit(1)
@@ -37,7 +37,7 @@ export async function getAvailableCredits(
       and(
         eq(visits.memberId, memberId),
         eq(visits.gymId, gymId),
-        eq(visits.overLimit, 'false'),
+        eq(visits.overLimit, false),
         gte(visits.visitedAt, monthStart(gymTimezone))
       )
     )

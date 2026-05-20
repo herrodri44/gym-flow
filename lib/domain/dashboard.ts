@@ -85,9 +85,9 @@ function unpaidBaseSql(gymId: string, gymTimezone: string) {
         mp.plan_type,
         mp.credits_per_month
       FROM enrollments e
-      JOIN members m  ON m.id = e.member_id AND m.active = 'true'
+      JOIN members m  ON m.id = e.member_id AND m.active = true
       JOIN membership_plans mp ON mp.id = e.plan_id
-      WHERE e.gym_id = ${gymId}::uuid AND e.active = 'true'
+      WHERE e.gym_id = ${gymId}::uuid AND e.active = true
         AND e.member_id NOT IN (
           SELECT DISTINCT member_id
           FROM payment_records
@@ -106,7 +106,7 @@ function unpaidBaseSql(gymId: string, gymTimezone: string) {
           - COALESCE(
               (SELECT COUNT(*)::int FROM visits v
                WHERE v.member_id = ue.member_id AND v.gym_id = ${gymId}::uuid
-               AND v.over_limit = 'false'
+               AND v.over_limit = false
                AND v.visited_at >= (SELECT start_ts FROM month_ts)),
               0
             )
@@ -130,8 +130,8 @@ export async function getKpis(
   const [memberCounts, visitStats, paymentStats, creditsStats] = await Promise.all([
     db.execute<{ active_count: number; inactive_count: number }>(sql`
       SELECT
-        COUNT(*) FILTER (WHERE active = 'true')::int  AS active_count,
-        COUNT(*) FILTER (WHERE active = 'false')::int AS inactive_count
+        COUNT(*) FILTER (WHERE active = true)::int  AS active_count,
+        COUNT(*) FILTER (WHERE active = false)::int AS inactive_count
       FROM members
       WHERE gym_id = ${gymId}::uuid
     `),
@@ -157,7 +157,7 @@ export async function getKpis(
         SELECT DISTINCT e.member_id
         FROM enrollments e
         JOIN members m ON m.id = e.member_id
-        WHERE e.gym_id = ${gymId}::uuid AND e.active = 'true' AND m.active = 'true'
+        WHERE e.gym_id = ${gymId}::uuid AND e.active = true AND m.active = true
       ),
       paid_members AS (
         SELECT DISTINCT member_id
@@ -192,7 +192,7 @@ export async function getKpis(
           - COALESCE(
               (SELECT COUNT(*)::int FROM visits v
                WHERE v.member_id = m.id AND v.gym_id = ${gymId}::uuid
-               AND v.over_limit = 'false'
+               AND v.over_limit = false
                AND v.visited_at >= ${monthStart(gymTimezone)}),
               0
             )
@@ -204,9 +204,9 @@ export async function getKpis(
             )
         ) AS available_credits
         FROM members m
-        JOIN enrollments e  ON e.member_id = m.id AND e.gym_id = ${gymId}::uuid AND e.active = 'true'
+        JOIN enrollments e  ON e.member_id = m.id AND e.gym_id = ${gymId}::uuid AND e.active = true
         JOIN membership_plans mp ON mp.id = e.plan_id AND mp.plan_type = 'credits'
-        WHERE m.gym_id = ${gymId}::uuid AND m.active = 'true'
+        WHERE m.gym_id = ${gymId}::uuid AND m.active = true
       )
       SELECT
         COALESCE(COUNT(*) FILTER (WHERE available_credits <= 0), 0)::int                                               AS zero_credits,

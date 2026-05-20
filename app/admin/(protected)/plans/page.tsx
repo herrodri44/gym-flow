@@ -26,8 +26,8 @@ export default async function PlansPage() {
     .where(eq(membershipPlans.gymId, gymId))
     .orderBy(asc(membershipPlans.name))
 
-  const activePlans = plans.filter((p) => p.active === 'true')
-  const inactivePlans = plans.filter((p) => p.active === 'false')
+  const activePlans = plans.filter((p) => p.active)
+  const inactivePlans = plans.filter((p) => !p.active)
 
   return (
     <div className="space-y-6">
@@ -63,7 +63,7 @@ export default async function PlansPage() {
               </TableHeader>
               <TableBody>
                 {[...activePlans, ...inactivePlans].map((plan) => (
-                  <TableRow key={plan.id} className={plan.active === 'false' ? 'opacity-50' : ''}>
+                  <TableRow key={plan.id} className={!plan.active ? 'opacity-50' : ''}>
                     <TableCell className="font-medium">{plan.name}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">
@@ -82,8 +82,8 @@ export default async function PlansPage() {
                       {plan.description ?? '—'}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={plan.active === 'true' ? 'default' : 'secondary'}>
-                        {plan.active === 'true' ? 'Activo' : 'Inactivo'}
+                      <Badge variant={plan.active ? 'default' : 'secondary'}>
+                        {plan.active ? 'Activo' : 'Inactivo'}
                       </Badge>
                     </TableCell>
                     <TableCell>

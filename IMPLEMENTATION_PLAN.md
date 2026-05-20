@@ -414,6 +414,25 @@ créditos_disponibles = plan.credits_per_month - visitas_en_ventana + ajustes_en
 
 ---
 
+### Gestión de contraseñas ✅
+
+**Entregable:** Gym admin puede cambiar su propia contraseña; superadmin puede resetear la de cualquier admin.
+
+**Tareas:**
+- [x] Sección "Cuenta" en `/admin/settings` con `ChangePasswordDialog` — verifica contraseña actual via `signInWithPassword`, luego `updateUser({ password })`
+- [x] Columna "Acciones" en `/superadmin/admins` con `ResetPasswordDialog` por fila — usa `adminClient.auth.admin.updateUserById`
+- [ ] **Pendiente:** "Olvidé mi contraseña" — `supabase.auth.resetPasswordForEmail` + ruta `/reset-password` + configurar SMTP en Supabase. Diferido: el reset por superadmin cubre el caso urgente.
+
+**Archivos creados/modificados:**
+- `app/admin/(protected)/settings/_components/change-password-dialog.tsx`
+- `app/admin/(protected)/settings/actions.ts` — agrega `changePasswordAction`
+- `app/admin/(protected)/settings/page.tsx` — agrega sección "Cuenta"
+- `app/superadmin/admins/_components/reset-password-dialog.tsx`
+- `app/superadmin/admins/actions.ts` — agrega `resetAdminPasswordAction`
+- `app/superadmin/admins/page.tsx` — agrega columna acciones
+
+---
+
 ### Franja 7 — Analíticas v1
 
 **Entregable:** Admin ve tendencias del gym activo con agregados SQL (sin enviar datos crudos al browser).
@@ -470,14 +489,15 @@ Cada sesión de implementación debería incluir:
 
 | Franja | Estado |
 |--------|--------|
-| 1 — Auth + multi-tenant | 🟡 código completo · migraciones aplicadas · pendiente test e2e + crear superadmin |
+| 1 — Auth + multi-tenant | ✅ completo · pendiente test e2e |
 | 2 — Socios + tabla | ✅ completo · pendiente RLS credit_adjustments |
 | 3 — Planes + inscripciones | ✅ completo |
-| 4 — Fichaje + QR | ✅ completo · pendiente rate limiting por IP |
+| 4 — Fichaje + QR | ✅ completo · rate limiting implementado |
 | 5 — Dashboard | ✅ completo |
 | 6 — Libro de pagos | ✅ completo |
 | Ajustes post-F6 | ✅ completo |
-| 7 — Analíticas | ⬜ pendiente |
+| Gestión de contraseñas | ✅ completo · pendiente "Olvidé mi contraseña" |
+| 7 — Analíticas | ✅ completo |
 
 ---
 

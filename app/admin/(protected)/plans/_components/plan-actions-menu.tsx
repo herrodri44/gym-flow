@@ -20,7 +20,7 @@ interface Plan {
   priceArs: number
   creditsPerMonth: number | null
   description: string | null
-  active: string
+  active: boolean
 }
 
 export function PlanActionsMenu({ plan }: { plan: Plan }) {
@@ -47,7 +47,7 @@ export function PlanActionsMenu({ plan }: { plan: Plan }) {
           <DropdownMenuItem onClick={() => setEditOpen(true)}>
             Editar
           </DropdownMenuItem>
-          {plan.active === 'true' && (
+          {plan.active && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleArchive} className="text-red-600">

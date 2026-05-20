@@ -20,7 +20,7 @@ export type MemberRow = {
   email: string | null
   birthDate: string | null
   joinedAt: string | null
-  active: string
+  active: boolean
   enrollment: {
     planName: string
     planType: 'credits' | 'unlimited'
@@ -54,10 +54,10 @@ export async function getMembersList(
 
   const statusFilter =
     status === 'inactive'
-      ? eq(members.active, 'false')
+      ? eq(members.active, false)
       : status === 'all'
         ? undefined
-        : eq(members.active, 'true')
+        : eq(members.active, true)
 
   const paymentFilter = validPaymentStatuses.includes(payment as PaymentStatus)
     ? exists(
@@ -131,7 +131,7 @@ export async function getMembersList(
               and(
                 inArray(enrollments.memberId, memberIds),
                 eq(enrollments.gymId, gymId),
-                eq(enrollments.active, 'true')
+                eq(enrollments.active, true)
               )
             ),
 
@@ -142,7 +142,7 @@ export async function getMembersList(
               and(
                 inArray(visits.memberId, memberIds),
                 eq(visits.gymId, gymId),
-                eq(visits.overLimit, 'false'),
+                eq(visits.overLimit, false),
                 gte(
                   visits.visitedAt,
                   monthStart(gymTimezone)

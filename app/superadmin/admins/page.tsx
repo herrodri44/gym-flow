@@ -1,6 +1,7 @@
 // All data fetching is in lib/domain/superadmin.ts.
 import { getAdminsPageData } from '@/lib/domain/superadmin'
 import { CreateAdminDialog } from './_components/create-admin-dialog'
+import { ResetPasswordDialog } from './_components/reset-password-dialog'
 import {
   Table,
   TableBody,
@@ -44,6 +45,7 @@ export default async function AdministradoresPage() {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Gimnasio asignado</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -57,6 +59,9 @@ export default async function AdministradoresPage() {
                     ) : (
                       <span className="text-zinc-400">Sin asignar</span>
                     )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ResetPasswordDialog adminId={admin.id} adminName={admin.fullName} />
                   </TableCell>
                 </TableRow>
               ))}

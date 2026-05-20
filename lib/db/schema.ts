@@ -95,7 +95,7 @@ export const members = pgTable('members', {
   birthDate: date('birth_date'),
   joinedAt: date('joined_at'),
   userId: uuid('user_id').references(() => profiles.id), // null si no usa portal
-  active: text('active').notNull().default('true'),
+  active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   unique().on(table.gymId, table.documentNumber),
@@ -110,7 +110,7 @@ export const membershipPlans = pgTable('membership_plans', {
   planType: planTypeEnum('plan_type').notNull().default('credits'),
   priceArs: integer('price_ars').notNull(), // centavos ARS
   creditsPerMonth: integer('credits_per_month'), // null cuando plan_type = 'unlimited'
-  active: text('active').notNull().default('true'),
+  active: boolean('active').notNull().default(true),
   description: text('description'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
@@ -128,7 +128,7 @@ export const enrollments = pgTable('enrollments', {
     .references(() => membershipPlans.id),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
   endedAt: timestamp('ended_at', { withTimezone: true }),
-  active: text('active').notNull().default('true'),
+  active: boolean('active').notNull().default(true),
 })
 
 // ─── Franja 4 ─────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export const visits = pgTable('visits', {
     .references(() => members.id, { onDelete: 'cascade' }),
   visitedAt: timestamp('visited_at', { withTimezone: true }).notNull(),
   channel: visitChannelEnum('channel').notNull(),
-  overLimit: text('over_limit').notNull().default('false'),
+  overLimit: boolean('over_limit').notNull().default(false),
   recordedBy: uuid('recorded_by').references(() => profiles.id),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })

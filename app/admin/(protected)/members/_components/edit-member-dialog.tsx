@@ -22,7 +22,7 @@ export type MemberForEdit = {
   email: string | null
   birthDate: string | null
   joinedAt: string | null
-  active: string
+  active: boolean
 }
 
 type Props = {
@@ -115,7 +115,7 @@ export function EditMemberDialog({ member, open, onOpenChange }: Props) {
               id="e-active"
               name="active"
               type="checkbox"
-              defaultChecked={member.active === 'true'}
+              defaultChecked={member.active}
               className="h-4 w-4 rounded border-zinc-300"
             />
             <Label htmlFor="e-active">Socio activo</Label>

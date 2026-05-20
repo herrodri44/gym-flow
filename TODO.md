@@ -94,9 +94,9 @@ function. See CONVENTIONS.md for the correct pattern.
   representation into every call site. Requires a DB migration + schema update
   + find-and-replace across all queries.
 
-- [ ] **Missing RLS policy for `credit_adjustments` table** — noted since
-  Franja 2, still pending. Supabase RLS for this table needs to be defined
-  so gym admins can only see their own gym's adjustments.
+- [x] **Missing RLS policy for `credit_adjustments` table** — aplicado en
+  Supabase SQL editor. Políticas: gym_admin (SELECT/INSERT/DELETE filtrado
+  por `gym_admins`), superadmin (ALL), member (SELECT propio via `members.user_id`).
 
 ---
 
@@ -230,3 +230,14 @@ relevant DB state in under 5 minutes.
 - [x] **`app/portal/account/page.tsx`** — extracted to `lib/domain/member.ts`
   → `getMemberPortalData(userId)`. Reduced from 5 sequential round trips to
   2, fixed a latent bug in `formatDate` for timestamp-typed period fields.
+
+- [x] **Cambio de contraseña — gym admin** — nueva sección "Cuenta" en
+  `/admin/settings` con `ChangePasswordDialog`. Verifica la contraseña actual
+  via `signInWithPassword` antes de llamar `updateUser`. Action:
+  `changePasswordAction` en `app/admin/(protected)/settings/actions.ts`.
+
+- [x] **Reset de contraseña — superadmin** — nueva columna "Acciones" en
+  `/superadmin/admins` con `ResetPasswordDialog` por fila. El superadmin
+  ingresa una nueva contraseña temporal; la action usa
+  `adminClient.auth.admin.updateUserById`. Action: `resetAdminPasswordAction`
+  en `app/superadmin/admins/actions.ts`.

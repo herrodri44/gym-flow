@@ -227,12 +227,12 @@ export default async function MembersPage({
                   <span
                     className={cn(
                       'mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium',
-                      selected.active === 'true'
+                      selected.active
                         ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-zinc-100 text-zinc-500'
                     )}
                   >
-                    {selected.active === 'true' ? 'Activo' : 'Inactivo'}
+                    {selected.active ? 'Activo' : 'Inactivo'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

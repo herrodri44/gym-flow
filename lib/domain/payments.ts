@@ -87,12 +87,12 @@ export async function getPaymentsPageData(
         enrollments,
         and(
           eq(enrollments.memberId, members.id),
-          eq(enrollments.active, 'true'),
+          eq(enrollments.active, true),
           eq(enrollments.gymId, gymId),
         )
       )
       .leftJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-      .where(and(eq(members.gymId, gymId), eq(members.active, 'true')))
+      .where(and(eq(members.gymId, gymId), eq(members.active, true)))
       .orderBy(members.fullName),
   ])
 

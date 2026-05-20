@@ -71,7 +71,7 @@ export default async function MemberDetailPage({
           ← Socios
         </Link>
         <h1 className="text-2xl font-semibold">{member.fullName}</h1>
-        {member.active === 'false' && (
+        {!member.active && (
           <Badge variant="secondary">Inactivo</Badge>
         )}
       </div>
@@ -205,7 +205,7 @@ export default async function MemberDetailPage({
                 <span>{formatDateTime(v.visitedAt)}</span>
                 <div className="flex gap-2">
                   <span className="text-zinc-400">{channelLabel[v.channel] ?? v.channel}</span>
-                  {v.overLimit === 'true' && (
+                  {v.overLimit && (
                     <Badge variant="destructive">Sin créditos</Badge>
                   )}
                 </div>

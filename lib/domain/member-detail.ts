@@ -20,7 +20,7 @@ export type MemberDetailData = {
     phone: string | null
     birthDate: string | null
     joinedAt: string | null
-    active: string
+    active: boolean
     gymId: string
   }
   gymTimezone: string
@@ -46,7 +46,7 @@ export type MemberDetailData = {
     id: string
     visitedAt: Date
     channel: string
-    overLimit: string
+    overLimit: boolean
   }>
   lastPayments: Array<{
     id: string
@@ -123,7 +123,7 @@ export async function getMemberDetail(
         and(
           eq(enrollments.memberId, memberId),
           eq(enrollments.gymId, gymId),
-          eq(enrollments.active, 'true')
+          eq(enrollments.active, true)
         )
       )
       .limit(1),
@@ -138,7 +138,7 @@ export async function getMemberDetail(
         creditsPerMonth: membershipPlans.creditsPerMonth,
       })
       .from(membershipPlans)
-      .where(and(eq(membershipPlans.gymId, gymId), eq(membershipPlans.active, 'true'))),
+      .where(and(eq(membershipPlans.gymId, gymId), eq(membershipPlans.active, true))),
 
     // Last 30 visits for the history list
     db
@@ -163,7 +163,7 @@ export async function getMemberDetail(
         and(
           eq(visits.memberId, memberId),
           eq(visits.gymId, gymId),
-          eq(visits.overLimit, 'false'),
+          eq(visits.overLimit, false),
           gte(visits.visitedAt, mStart)
         )
       ),

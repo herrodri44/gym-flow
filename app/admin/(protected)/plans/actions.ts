@@ -60,7 +60,7 @@ export async function updatePlanAction(planId: string, formData: FormData) {
   const priceInput = parseFloat(formData.get('priceArs') as string)
   const creditsInput = formData.get('creditsPerMonth') as string
   const description = (formData.get('description') as string)?.trim() || null
-  const active = formData.get('active') === 'on' ? 'true' : 'false'
+  const active = formData.get('active') === 'on'
 
   if (!name) return { error: 'El nombre es requerido' }
   if (planType !== 'credits' && planType !== 'unlimited') return { error: 'Tipo de plan inválido' }
@@ -98,7 +98,7 @@ export async function archivePlanAction(planId: string) {
 
   await db
     .update(membershipPlans)
-    .set({ active: 'false' })
+    .set({ active: false })
     .where(eq(membershipPlans.id, planId))
 
   revalidatePath('/admin/plans')
@@ -135,12 +135,12 @@ export async function enrollMemberAction(formData: FormData) {
 
   await db
     .update(enrollments)
-    .set({ active: 'false', endedAt: new Date() })
+    .set({ active: false, endedAt: new Date() })
     .where(
       and(
         eq(enrollments.memberId, memberId),
         eq(enrollments.gymId, ctx.gymId),
-        eq(enrollments.active, 'true')
+        eq(enrollments.active, true)
       )
     )
 
@@ -149,7 +149,7 @@ export async function enrollMemberAction(formData: FormData) {
     memberId,
     planId,
     startedAt: startedAt ? new Date(startedAt) : new Date(),
-    active: 'true',
+    active: true,
   })
 
   revalidatePath(`/admin/members/${memberId}`)

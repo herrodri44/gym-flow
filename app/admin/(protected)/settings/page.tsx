@@ -9,6 +9,7 @@ import QRCode from 'qrcode'
 import { GymInfoForm } from './_components/gym-info-form'
 import { OperationalSettingsForm } from './_components/operational-settings-form'
 import { GymQR } from './_components/gym-qr'
+import { ChangePasswordDialog } from './_components/change-password-dialog'
 import { Separator } from '@/components/ui/separator'
 
 export default async function SettingsPage() {
@@ -102,6 +103,19 @@ export default async function SettingsPage() {
           </p>
         </div>
         <GymQR qrDataUrl={qrDataUrl} checkInUrl={checkInUrl} gymName={gym.name} />
+      </section>
+
+      <Separator />
+
+      {/* Account */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-800">Cuenta</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Seguridad de tu cuenta de administrador.
+          </p>
+        </div>
+        <ChangePasswordDialog />
       </section>
     </div>
   )

@@ -87,7 +87,7 @@ export async function updateMemberAction(memberId: string, formData: FormData) {
   const email = (formData.get('email') as string)?.trim() || null
   const birthDate = (formData.get('birthDate') as string)?.trim() || null
   const joinedAt = (formData.get('joinedAt') as string)?.trim() || null
-  const active = formData.get('active') === 'on' ? 'true' : 'false'
+  const active = formData.get('active') === 'on'
 
   if (!fullName) return { error: 'El nombre es requerido' }
   if (!documentNumber) return { error: 'El número de documento es requerido' }
@@ -121,7 +121,7 @@ export async function deleteMemberAction(memberId: string) {
 
   await db
     .update(members)
-    .set({ active: 'false' })
+    .set({ active: false })
     .where(eq(members.id, memberId))
 
   revalidatePath('/admin/members')

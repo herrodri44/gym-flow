@@ -26,7 +26,7 @@ interface Plan {
   priceArs: number
   creditsPerMonth: number | null
   description: string | null
-  active: string
+  active: boolean
 }
 
 interface EditPlanDialogProps {
@@ -115,7 +115,7 @@ export function EditPlanDialog({ plan, open, onOpenChange }: EditPlanDialogProps
               type="checkbox"
               id="ep-active"
               name="active"
-              defaultChecked={plan.active === 'true'}
+              defaultChecked={plan.active}
               className="h-4 w-4"
             />
             <Label htmlFor="ep-active">Plan activo</Label>

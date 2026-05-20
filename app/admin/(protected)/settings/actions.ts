@@ -5,6 +5,7 @@ import { db } from '@/lib/db/client'
 import { gyms, gymSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
+import { createClient } from '@/lib/supabase/server'
 
 export async function updateGymInfoAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -31,6 +32,43 @@ export async function updateGymInfoAction(formData: FormData) {
   } catch {
     return { error: 'Error al guardar la información del gimnasio' }
   }
+}
+
+export async function changePasswordAction(formData: FormData) {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return { error: 'No autorizado' }
+
+  const currentPassword = formData.get('currentPassword') as string
+  const newPassword = formData.get('newPassword') as string
+  const confirmPassword = formData.get('confirmPassword') as string
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return { error: 'Todos los campos son requeridos' }
+  }
+  if (newPassword.length < 8) {
+    return { error: 'La nueva contraseña debe tener al menos 8 caracteres' }
+  }
+  if (newPassword !== confirmPassword) {
+    return { error: 'Las contraseñas nuevas no coinciden' }
+  }
+
+  const supabase = await createClient()
+
+  // Verify current password before allowing the change
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: ctx.user.email!,
+    password: currentPassword,
+  })
+  if (signInError) {
+    return { error: 'La contraseña actual es incorrecta' }
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+  if (updateError) {
+    return { error: 'Error al actualizar la contraseña' }
+  }
+
+  return { success: true }
 }
 
 export async function updateOperationalSettingsAction(formData: FormData) {
