@@ -78,6 +78,7 @@ export const gymSettings = pgTable('gym_settings', {
     .unique(),
   allowOverLimit: boolean('allow_over_limit').notNull().default(false),
   lowCreditsThreshold: integer('low_credits_threshold').notNull().default(2),
+  autoGeneratePayments: boolean('auto_generate_payments').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

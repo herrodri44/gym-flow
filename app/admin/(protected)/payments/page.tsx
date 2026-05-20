@@ -2,42 +2,11 @@
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
-import { formatARS } from '@/lib/utils'
 import { getPaymentsPageData } from '@/lib/domain/payments'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { RegisterPaymentDialog } from './_components/register-payment-dialog'
-import { PaymentRowActions } from './_components/payment-row-actions'
 import { MarkOverdueButton } from './_components/mark-overdue-button'
-
-const statusVariant = {
-  paid: 'default',
-  pending: 'secondary',
-  overdue: 'destructive',
-} as const
-
-const statusLabel = {
-  paid: 'Pagado',
-  pending: 'Pendiente',
-  overdue: 'Vencido',
-}
-
-function formatPeriod(ts: Date | null) {
-  if (!ts) return '—'
-  return ts.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-}
-
-function formatDate(ts: Date | null) {
-  if (!ts) return '—'
-  return ts.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
+import { GeneratePaymentsButton } from './_components/generate-payments-button'
+import { PaymentsTable } from './_components/payments-table'
 
 export default async function PaymentsPage({
   searchParams,
@@ -48,10 +17,11 @@ export default async function PaymentsPage({
   const cookieStore = await cookies()
   const gymId = cookieStore.get(ACTIVE_GYM_COOKIE)!.value
 
-  const { payments, activeMembers, pendingOverdue } = await getPaymentsPageData(gymId, {
-    status: sp.status,
-    month: sp.month,
-  })
+  const currentMonth = new Date().toISOString().slice(0, 7)
+  const effectiveMonth = sp.month ?? currentMonth
+
+  const { payments, activeMembers, pendingOverdue, autoGeneratePayments } =
+    await getPaymentsPageData(gymId, { status: sp.status, month: effectiveMonth })
 
   const hasFilters = !!sp.status || !!sp.month
 
@@ -71,6 +41,7 @@ export default async function PaymentsPage({
         </div>
         <div className="flex gap-2">
           {pendingOverdue > 0 && <MarkOverdueButton count={pendingOverdue} />}
+          <GeneratePaymentsButton autoGeneratePayments={autoGeneratePayments} selectedMonth={effectiveMonth} />
           <RegisterPaymentDialog members={activeMembers} />
         </div>
       </div>
@@ -90,7 +61,7 @@ export default async function PaymentsPage({
         <input
           type="month"
           name="month"
-          defaultValue={sp.month ?? ''}
+          defaultValue={sp.month ?? currentMonth}
           className="rounded-md border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
         />
         <button
@@ -121,55 +92,7 @@ export default async function PaymentsPage({
           )}
         </div>
       ) : (
-        <div className="rounded-lg border bg-white overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Socio</TableHead>
-                <TableHead>Período</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead className="text-center">Estado</TableHead>
-                <TableHead>Fecha de pago</TableHead>
-                <TableHead>Notas</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payments.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/admin/members/${p.memberId}`}
-                      className="hover:underline"
-                    >
-                      {p.memberName}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-zinc-600 capitalize">
-                    {formatPeriod(p.periodStart)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums font-medium">
-                    {formatARS(p.amountArs)}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant={statusVariant[p.status]}>
-                      {statusLabel[p.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-zinc-500 tabular-nums">
-                    {formatDate(p.paidAt)}
-                  </TableCell>
-                  <TableCell className="text-zinc-400 max-w-50 truncate">
-                    {p.notes ?? '—'}
-                  </TableCell>
-                  <TableCell>
-                    <PaymentRowActions payment={{ id: p.id, status: p.status }} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <PaymentsTable payments={payments} />
       )}
     </div>
   )

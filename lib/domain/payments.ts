@@ -1,5 +1,5 @@
 import { db } from '@/lib/db/client'
-import { paymentRecords, members, enrollments, membershipPlans } from '@/lib/db/schema'
+import { paymentRecords, members, enrollments, membershipPlans, gymSettings } from '@/lib/db/schema'
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 
 export type PaymentsFilters = {
@@ -32,6 +32,7 @@ export type PaymentsPageData = {
   payments: PaymentRow[]
   activeMembers: ActiveMemberOption[]
   pendingOverdue: number
+  autoGeneratePayments: boolean
 }
 
 const validStatuses = ['paid', 'pending', 'overdue'] as const
@@ -55,7 +56,7 @@ export async function getPaymentsPageData(
     conditions.push(lte(paymentRecords.periodStart, end))
   }
 
-  const [payments, activeMembers] = await Promise.all([
+  const [payments, activeMembers, [settings]] = await Promise.all([
     db
       .select({
         id: paymentRecords.id,
@@ -94,6 +95,12 @@ export async function getPaymentsPageData(
       .leftJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
       .where(and(eq(members.gymId, gymId), eq(members.active, true)))
       .orderBy(members.fullName),
+
+    db
+      .select({ autoGeneratePayments: gymSettings.autoGeneratePayments })
+      .from(gymSettings)
+      .where(eq(gymSettings.gymId, gymId))
+      .limit(1),
   ])
 
   const now = new Date()
@@ -101,12 +108,14 @@ export async function getPaymentsPageData(
     (p) => p.status === 'pending' && p.periodEnd < now
   ).length
 
-  return { payments, activeMembers, pendingOverdue }
+  return { payments, activeMembers, pendingOverdue, autoGeneratePayments: settings?.autoGeneratePayments ?? true }
 }
 
 // Creates pending payment records for the current month for every active member
 // with an active enrollment that doesn't already have one.
 // Covers all gyms in a single query; respects each gym's timezone.
+// Called by the Vercel cron on the 1st of each month.
+// Only processes gyms that have auto_generate_payments = true.
 export async function generateMonthlyPayments(): Promise<{ created: number }> {
   const rows = await db.execute<{ id: string }>(sql`
     INSERT INTO payment_records
@@ -128,13 +137,58 @@ export async function generateMonthlyPayments(): Promise<{ created: number }> {
       AND e.gym_id = m.gym_id
     JOIN membership_plans mp ON mp.id = e.plan_id
     JOIN gyms g ON g.id = m.gym_id
+    JOIN gym_settings gs ON gs.gym_id = g.id
     WHERE m.active = true
+      AND gs.auto_generate_payments = true
       AND NOT EXISTS (
         SELECT 1 FROM payment_records pr
         WHERE pr.member_id = m.id
           AND pr.gym_id = m.gym_id
           AND pr.period_start >= date_trunc('month', now() AT TIME ZONE g.timezone) AT TIME ZONE g.timezone
           AND pr.period_start <  (date_trunc('month', now() AT TIME ZONE g.timezone) + interval '1 month') AT TIME ZONE g.timezone
+      )
+    RETURNING id
+  `)
+
+  return { created: rows.length }
+}
+
+// Called by the manual "Generar cuotas" button for a specific gym and month (YYYY-MM).
+// Ignores the auto_generate_payments setting (admin triggered it explicitly).
+export async function generatePaymentsForGym(
+  gymId: string,
+  month: string,
+): Promise<{ created: number }> {
+  const [y, m] = month.split('-').map(Number)
+
+  const rows = await db.execute<{ id: string }>(sql`
+    INSERT INTO payment_records
+      (id, gym_id, member_id, enrollment_id, amount_ars, currency, period_start, period_end, status)
+    SELECT
+      gen_random_uuid(),
+      m.gym_id,
+      m.id,
+      e.id,
+      mp.price_ars,
+      'ARS',
+      make_date(${y}::int, ${m}::int, 1)::timestamp AT TIME ZONE g.timezone,
+      (make_date(${y}::int, ${m}::int, 1)::timestamp + interval '1 month' - interval '1 second') AT TIME ZONE g.timezone,
+      'pending'
+    FROM members m
+    JOIN enrollments e
+      ON e.member_id = m.id
+      AND e.active = true
+      AND e.gym_id = m.gym_id
+    JOIN membership_plans mp ON mp.id = e.plan_id
+    JOIN gyms g ON g.id = m.gym_id
+    WHERE m.active = true
+      AND g.id = ${gymId}::uuid
+      AND NOT EXISTS (
+        SELECT 1 FROM payment_records pr
+        WHERE pr.member_id = m.id
+          AND pr.gym_id = m.gym_id
+          AND pr.period_start >= make_date(${y}::int, ${m}::int, 1)::timestamp AT TIME ZONE g.timezone
+          AND pr.period_start <  (make_date(${y}::int, ${m}::int, 1)::timestamp + interval '1 month') AT TIME ZONE g.timezone
       )
     RETURNING id
   `)

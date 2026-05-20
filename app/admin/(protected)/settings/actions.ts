@@ -76,6 +76,7 @@ export async function updateOperationalSettingsAction(formData: FormData) {
   if (!ctx) return { error: 'No autorizado' }
 
   const allowOverLimit = formData.get('allowOverLimit') === 'on'
+  const autoGeneratePayments = formData.get('autoGeneratePayments') === 'on'
   const lowCreditsThresholdRaw = parseInt(
     formData.get('lowCreditsThreshold') as string,
     10,
@@ -88,7 +89,7 @@ export async function updateOperationalSettingsAction(formData: FormData) {
   try {
     await db
       .update(gymSettings)
-      .set({ allowOverLimit, lowCreditsThreshold, updatedAt: new Date() })
+      .set({ allowOverLimit, autoGeneratePayments, lowCreditsThreshold, updatedAt: new Date() })
       .where(eq(gymSettings.gymId, ctx.gymId))
 
     revalidatePath('/admin/settings')

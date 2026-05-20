@@ -8,7 +8,7 @@ const mockInsertValues = vi.fn().mockResolvedValue(undefined)
 const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 
 const mockUpdateWhere = vi.fn().mockResolvedValue(undefined)
-const mockSet = vi.fn(() => ({ where: mockUpdateWhere }))
+const mockSet = vi.fn((_args: Record<string, unknown>) => ({ where: mockUpdateWhere }))
 const mockUpdate = vi.fn(() => ({ set: mockSet }))
 
 const mockDeleteWhere = vi.fn().mockResolvedValue(undefined)

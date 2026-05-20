@@ -9,11 +9,12 @@ import { Label } from '@/components/ui/label'
 type Props = {
   allowOverLimit: boolean
   lowCreditsThreshold: number
+  autoGeneratePayments: boolean
 }
 
 type ActionState = { error?: string; success?: boolean } | undefined
 
-export function OperationalSettingsForm({ allowOverLimit, lowCreditsThreshold }: Props) {
+export function OperationalSettingsForm({ allowOverLimit, lowCreditsThreshold, autoGeneratePayments }: Props) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_, fd) => updateOperationalSettingsAction(fd),
     undefined,
@@ -36,6 +37,26 @@ export function OperationalSettingsForm({ allowOverLimit, lowCreditsThreshold }:
           <p className="mt-0.5 text-sm text-zinc-500">
             Si está activo, el socio puede fichar igual con una advertencia visible. El ingreso queda
             marcado como "por encima del límite".
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3">
+        <input
+          id="os-autoGeneratePayments"
+          name="autoGeneratePayments"
+          type="checkbox"
+          defaultChecked={autoGeneratePayments}
+          className="mt-1 h-4 w-4 rounded border-gray-300"
+        />
+        <div>
+          <Label htmlFor="os-autoGeneratePayments" className="font-medium">
+            Generar cuotas automáticamente cada mes
+          </Label>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            Si está activo, el sistema genera cuotas pendientes para todos los socios activos el
+            primer día de cada mes. Al desactivarlo, el botón "Generar cuotas del mes" queda
+            habilitado en la página de pagos para hacerlo manualmente.
           </p>
         </div>
       </div>

@@ -3,11 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db/client'
 import { paymentRecords } from '@/lib/db/schema'
-import { and, eq, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
 import * as Sentry from '@sentry/nextjs'
 import { logger } from '@/lib/logger'
+import { generatePaymentsForGym } from '@/lib/domain/payments'
 
 export async function registerPaymentAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -104,6 +105,46 @@ export async function deletePaymentAction(formData: FormData) {
   await db
     .delete(paymentRecords)
     .where(and(eq(paymentRecords.id, paymentId), eq(paymentRecords.gymId, ctx.gymId)))
+
+  revalidatePath('/admin/payments')
+  return { success: true }
+}
+
+export async function generatePaymentsAction(month: string) {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return { error: 'No autorizado' }
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return { error: 'Mes inválido' }
+
+  const { created } = await generatePaymentsForGym(ctx.gymId, month)
+  revalidatePath('/admin/payments')
+  return { success: true, created }
+}
+
+export async function bulkUpdateStatusAction(
+  ids: string[],
+  status: 'paid' | 'pending' | 'overdue',
+) {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return { error: 'No autorizado' }
+  if (!ids.length) return { error: 'Sin registros seleccionados' }
+
+  await db
+    .update(paymentRecords)
+    .set({ status, paidAt: status === 'paid' ? new Date() : null })
+    .where(and(inArray(paymentRecords.id, ids), eq(paymentRecords.gymId, ctx.gymId)))
+
+  revalidatePath('/admin/payments')
+  return { success: true }
+}
+
+export async function bulkDeleteAction(ids: string[]) {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return { error: 'No autorizado' }
+  if (!ids.length) return { error: 'Sin registros seleccionados' }
+
+  await db
+    .delete(paymentRecords)
+    .where(and(inArray(paymentRecords.id, ids), eq(paymentRecords.gymId, ctx.gymId)))
 
   revalidatePath('/admin/payments')
   return { success: true }

@@ -45,7 +45,7 @@ export function makeInsertMock() {
 
 export function makeUpdateMock() {
   const whereFn = vi.fn().mockResolvedValue(undefined)
-  const setFn = vi.fn(() => ({ where: whereFn }))
+  const setFn = vi.fn((_args: Record<string, unknown>) => ({ where: whereFn }))
   const mock = vi.fn(() => ({ set: setFn }))
   return { mock, setFn, whereFn }
 }
