@@ -1,6 +1,6 @@
 import { db } from '@/lib/db/client'
 import { paymentRecords, members, enrollments, membershipPlans } from '@/lib/db/schema'
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm'
 
 export type PaymentsFilters = {
   status?: string
@@ -102,4 +102,42 @@ export async function getPaymentsPageData(
   ).length
 
   return { payments, activeMembers, pendingOverdue }
+}
+
+// Creates pending payment records for the current month for every active member
+// with an active enrollment that doesn't already have one.
+// Covers all gyms in a single query; respects each gym's timezone.
+export async function generateMonthlyPayments(): Promise<{ created: number }> {
+  const rows = await db.execute<{ id: string }>(sql`
+    INSERT INTO payment_records
+      (id, gym_id, member_id, enrollment_id, amount_ars, currency, period_start, period_end, status)
+    SELECT
+      gen_random_uuid(),
+      m.gym_id,
+      m.id,
+      e.id,
+      mp.price_ars,
+      'ARS',
+      date_trunc('month', now() AT TIME ZONE g.timezone) AT TIME ZONE g.timezone,
+      (date_trunc('month', now() AT TIME ZONE g.timezone) + interval '1 month' - interval '1 second') AT TIME ZONE g.timezone,
+      'pending'
+    FROM members m
+    JOIN enrollments e
+      ON e.member_id = m.id
+      AND e.active = true
+      AND e.gym_id = m.gym_id
+    JOIN membership_plans mp ON mp.id = e.plan_id
+    JOIN gyms g ON g.id = m.gym_id
+    WHERE m.active = true
+      AND NOT EXISTS (
+        SELECT 1 FROM payment_records pr
+        WHERE pr.member_id = m.id
+          AND pr.gym_id = m.gym_id
+          AND pr.period_start >= date_trunc('month', now() AT TIME ZONE g.timezone) AT TIME ZONE g.timezone
+          AND pr.period_start <  (date_trunc('month', now() AT TIME ZONE g.timezone) + interval '1 month') AT TIME ZONE g.timezone
+      )
+    RETURNING id
+  `)
+
+  return { created: rows.length }
 }

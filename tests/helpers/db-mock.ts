@@ -28,7 +28,19 @@ export function makeSelectChain(value: unknown[]) {
 }
 
 export function makeInsertMock() {
-  return vi.fn(() => ({ values: vi.fn().mockResolvedValue(undefined) }))
+  const returningFn = vi.fn().mockResolvedValue([{ id: 'new-row-id' }])
+  const valuesMockResult = {
+    returning: returningFn,
+    then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+      return Promise.resolve(undefined).then(resolve, reject)
+    },
+    catch(onRejected: (e: unknown) => unknown) {
+      return Promise.resolve(undefined).catch(onRejected)
+    },
+  }
+  const valuesFn = vi.fn().mockReturnValue(valuesMockResult)
+  const mock = vi.fn(() => ({ values: valuesFn }))
+  return mock
 }
 
 export function makeUpdateMock() {

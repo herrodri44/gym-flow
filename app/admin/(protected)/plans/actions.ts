@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { db } from '@/lib/db/client'
-import { membershipPlans, enrollments, members } from '@/lib/db/schema'
+import { membershipPlans } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
+import { enrollMember } from '@/lib/domain/enrollment'
 
 export async function createPlanAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -117,40 +118,14 @@ export async function enrollMemberAction(formData: FormData) {
 
   if (!memberId || !planId) return { error: 'Faltan datos requeridos' }
 
-  const [member] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(and(eq(members.id, memberId), eq(members.gymId, ctx.gymId)))
-    .limit(1)
-
-  if (!member) return { error: 'Socio no encontrado' }
-
-  const [plan] = await db
-    .select({ id: membershipPlans.id })
-    .from(membershipPlans)
-    .where(and(eq(membershipPlans.id, planId), eq(membershipPlans.gymId, ctx.gymId)))
-    .limit(1)
-
-  if (!plan) return { error: 'Plan no encontrado' }
-
-  await db
-    .update(enrollments)
-    .set({ active: false, endedAt: new Date() })
-    .where(
-      and(
-        eq(enrollments.memberId, memberId),
-        eq(enrollments.gymId, ctx.gymId),
-        eq(enrollments.active, true)
-      )
-    )
-
-  await db.insert(enrollments).values({
+  const result = await enrollMember({
     gymId: ctx.gymId,
     memberId,
     planId,
-    startedAt: startedAt ? new Date(startedAt) : new Date(),
-    active: true,
+    startedAt: startedAt ? new Date(startedAt) : undefined,
   })
+
+  if ('error' in result) return result
 
   revalidatePath(`/admin/members/${memberId}`)
   revalidatePath('/admin/members')

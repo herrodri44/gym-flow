@@ -35,7 +35,7 @@ interface EnrollMemberDialogProps {
   hasActiveEnrollment: boolean
 }
 
-type ActionState = { error?: string; success?: boolean } | undefined
+type ActionState = { error: string } | { success: boolean } | undefined
 
 export function EnrollMemberDialog({ memberId, plans, hasActiveEnrollment }: EnrollMemberDialogProps) {
   const [open, setOpen] = useState(false)
@@ -45,7 +45,7 @@ export function EnrollMemberDialog({ memberId, plans, hasActiveEnrollment }: Enr
       fd.set('memberId', memberId)
       fd.set('planId', selectedPlanId)
       const result = await enrollMemberAction(fd)
-      if (result?.success) {
+      if (result && 'success' in result) {
         setOpen(false)
         setSelectedPlanId('')
       }
@@ -109,7 +109,7 @@ export function EnrollMemberDialog({ memberId, plans, hasActiveEnrollment }: Enr
               <Input id="em-startedAt" name="startedAt" type="date" defaultValue={today} />
             </div>
 
-            {state?.error && (
+            {state && 'error' in state && (
               <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{state.error}</p>
             )}
 
