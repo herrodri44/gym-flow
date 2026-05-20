@@ -176,7 +176,7 @@ function UnpaidList({
         <span className={cn('h-2 w-2 rounded-full shrink-0', dotClass)} />
         <p className={cn('text-xs font-bold uppercase tracking-wide', titleClass)}>{title}</p>
       </div>
-      <ul className="space-y-0.5">
+      <ul className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
         {members.map((m) => (
           <li key={m.id}>
             <Link

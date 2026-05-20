@@ -6,6 +6,7 @@ import { gyms, gymSettings } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import { createClient } from '@/lib/supabase/server'
+import { bulkCreateMembers, type BulkMemberInput, type BulkCreateResult } from '@/lib/domain/members-bulk'
 
 export async function updateGymInfoAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -69,6 +70,19 @@ export async function changePasswordAction(formData: FormData) {
   }
 
   return { success: true }
+}
+
+export async function bulkCreateMembersAction(
+  rows: BulkMemberInput[],
+): Promise<BulkCreateResult & { error?: string }> {
+  const ctx = await requireGymAdmin()
+  if (!ctx) return { error: 'No autorizado', created: 0, skipped: 0, errors: [] }
+  if (rows.length === 0) return { error: 'No hay filas para importar', created: 0, skipped: 0, errors: [] }
+  if (rows.length > 500) return { error: 'Máximo 500 socios por importación', created: 0, skipped: 0, errors: [] }
+
+  const result = await bulkCreateMembers(ctx.gymId, rows)
+  revalidatePath('/admin/members')
+  return result
 }
 
 export async function updateOperationalSettingsAction(formData: FormData) {

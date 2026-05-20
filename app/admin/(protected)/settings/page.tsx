@@ -10,6 +10,7 @@ import { GymInfoForm } from './_components/gym-info-form'
 import { OperationalSettingsForm } from './_components/operational-settings-form'
 import { GymQR } from './_components/gym-qr'
 import { ChangePasswordDialog } from './_components/change-password-dialog'
+import { BulkMemberUpload } from './_components/bulk-member-upload'
 import { Separator } from '@/components/ui/separator'
 
 export default async function SettingsPage() {
@@ -104,6 +105,19 @@ export default async function SettingsPage() {
           </p>
         </div>
         <GymQR qrDataUrl={qrDataUrl} checkInUrl={checkInUrl} gymName={gym.name} />
+      </section>
+
+      <Separator />
+
+      {/* Bulk import */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-800">Importar socios</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Cargá múltiples socios desde un archivo CSV. Los socios ya existentes (mismo DNI) se omiten automáticamente.
+          </p>
+        </div>
+        <BulkMemberUpload />
       </section>
 
       <Separator />
