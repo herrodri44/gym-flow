@@ -227,6 +227,7 @@ export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
                       birthDate: selected.birthDate,
                       joinedAt: selected.joinedAt,
                       active: selected.active,
+                      notes: selected.notes,
                     }}
                   />
                 </div>

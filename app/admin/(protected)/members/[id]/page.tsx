@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { CreditAdjustmentForm } from './_components/credit-adjustment-form'
 import { EnrollMemberDialog } from './_components/enroll-member-dialog'
+import { MemberNotesForm } from './_components/member-notes-form'
 
 function formatDate(value: string | Date | null | undefined) {
   if (!value) return '—'
@@ -61,6 +62,7 @@ export default async function MemberDetailPage({
     lastPayments,
     recentAdjustments,
   } = data
+
 
   const isUnlimited = enrollment?.planType === 'unlimited'
 
@@ -162,6 +164,12 @@ export default async function MemberDetailPage({
           )}
         </Card>
       </div>
+
+      {/* Notes */}
+      <Card className="p-6 space-y-3">
+        <h2 className="font-semibold text-sm text-zinc-500 uppercase tracking-wide">Notas internas</h2>
+        <MemberNotesForm memberId={member.id} notes={member.notes} />
+      </Card>
 
       {/* Last payments */}
       {lastPayments.length > 0 && (

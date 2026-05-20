@@ -1,10 +1,11 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import { updateMemberAction } from '../actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ export type MemberForEdit = {
   birthDate: string | null
   joinedAt: string | null
   active: boolean
+  notes: string | null
 }
 
 type Props = {
@@ -108,6 +110,17 @@ export function EditMemberDialog({ member, open, onOpenChange }: Props) {
                 defaultValue={member.joinedAt ?? ''}
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="e-notes">Notas internas</Label>
+            <Textarea
+              id="e-notes"
+              name="notes"
+              defaultValue={member.notes ?? ''}
+              placeholder="Objetivos, advertencias, contexto…"
+              rows={3}
+            />
           </div>
 
           <div className="flex items-center gap-2">

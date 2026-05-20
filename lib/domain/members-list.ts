@@ -21,6 +21,7 @@ export type MemberRow = {
   birthDate: string | null
   joinedAt: string | null
   active: boolean
+  notes: string | null
   enrollment: {
     planName: string
     planType: 'credits' | 'unlimited'
@@ -102,6 +103,7 @@ export async function getMembersList(
         birthDate: members.birthDate,
         joinedAt: members.joinedAt,
         active: members.active,
+        notes: members.notes,
       })
       .from(members)
       .where(baseWhere)

@@ -225,6 +225,99 @@ relevant DB state in under 5 minutes.
 
 ---
 
+---
+
+## Pendiente — Socios: Notas y Carga Masiva
+
+### Campo de Notas en socios
+
+Permite al admin registrar notas internas sobre cada socio (objetivos, advertencias, contexto).
+
+**Pasos:**
+
+1. **Migración** — `0004_member_notes.sql`
+   ```sql
+   ALTER TABLE members ADD COLUMN notes text;
+   ```
+
+2. **Schema** — agregar `notes: text('notes')` a la tabla `members` en `lib/db/schema.ts`
+
+3. **Domain** — incluir `notes` en el SELECT de `getMemberDetail()` en `lib/domain/member-detail.ts`
+
+4. **Action** — agregar `notes` al `updateMemberAction` en `app/admin/(protected)/members/actions.ts`
+
+5. **UI** — en la página de detalle del socio (`app/admin/(protected)/members/[id]/page.tsx`), agregar una sección con un `<textarea>` editable que guarde vía un form action o inline edit. Mostrar debajo de la info básica del socio en el panel derecho.
+
+---
+
+### Carga masiva de socios (Bulk CSV Upload)
+
+Ayuda a gimnasios nuevos a importar toda su base de socios desde un CSV.
+Ubicación: página de Configuración (`/admin/settings`), nueva sección "Importar socios".
+
+**Flujo de usuario:**
+1. Admin descarga un CSV template con las columnas correctas
+2. Completa el archivo en Excel/Sheets
+3. Sube el archivo → se parsea y muestra una tabla de preview con errores resaltados
+4. Confirma la carga → se insertan los registros válidos
+5. Se muestra resumen: "X socios creados, Y omitidos (DNI duplicado), Z con errores"
+
+**Campos del CSV template:**
+
+| Columna | Requerido |
+|---|---|
+| `primer_nombre` | ✓ |
+| `apellido` | ✓ |
+| `dni` | ✓ |
+| `telefono` | — |
+| `email` | — |
+| `fecha_nacimiento` | — (formato YYYY-MM-DD) |
+| `fecha_ingreso` | — (formato YYYY-MM-DD) |
+
+`primer_nombre` + `apellido` se concatenan → `fullName` al procesar.
+
+**Pasos de implementación:**
+
+1. **Template CSV** — archivo estático `public/templates/socios-template.csv` con headers y una fila de ejemplo. El botón "Descargar template" apunta a este archivo.
+
+2. **Domain function** — `lib/domain/members-bulk.ts` → `bulkCreateMembers(gymId, rows[])`:
+   - Valida cada fila (campos requeridos, formato de fechas, DNI no vacío)
+   - Hace un batch de todos los DNIs existentes en el gym para detectar duplicados sin N+1
+   - Inserta en un loop (no en un único bulk insert, para poder reportar errores por fila)
+   - Si hay email: intenta crear cuenta Supabase (igual que `createMemberAction`); fallo no-crítico
+   - Retorna `{ created: number, skipped: number, errors: RowError[] }`
+
+3. **Server Action** — `bulkCreateMembersAction(formData)` en `app/admin/(protected)/settings/actions.ts`:
+   - Parsea el archivo CSV server-side (sin dependencias, CSV es simple de parsear con `split`)
+   - Delega a `bulkCreateMembers`
+   - Retorna el resumen
+
+4. **UI** — nuevo componente `app/admin/(protected)/settings/_components/bulk-member-upload.tsx`:
+   - Sección con descripción: campos obligatorios, formato esperado
+   - Botón "Descargar template CSV"
+   - `<input type="file" accept=".csv">`
+   - Al seleccionar archivo: parseo client-side con preview de las primeras filas (sin enviar aún)
+   - Botón "Importar" → llama al server action
+   - Muestra spinner mientras procesa
+   - Muestra resultado final: tabla con errores + resumen de creados/omitidos
+
+5. **Settings page** — agregar la nueva sección `<BulkMemberUpload />` con un `<Separator />` antes
+
+**Consideraciones:**
+- Máximo razonable: 500 filas por upload (validar en action y en el UI)
+- El CSV template debe tener una fila de ejemplo comentada o con datos ficticios de muestra
+- Los errores por fila deben indicar el número de fila y el motivo (ej. "Fila 5: DNI duplicado")
+
+---
+
+### Gap — Edición de socio: email no crea cuenta Supabase
+
+Al editar un socio y agregarle email por primera vez, `updateMemberAction` actualiza la DB pero no crea el usuario en Supabase Auth. El socio queda sin acceso al portal.
+
+**Fix:** En `updateMemberAction`, si el campo `email` es nuevo (antes era null) y el socio no tiene `userId`, replicar la lógica de creación de cuenta de `createMemberAction`: `adminClient.auth.admin.createUser(...)` → `db.insert(profiles)` → actualizar `userId` en la fila del socio, todo dentro del mismo try/catch.
+
+---
+
 ## Done
 
 - [x] **`app/portal/account/page.tsx`** — extracted to `lib/domain/member.ts`

@@ -97,6 +97,7 @@ export const members = pgTable('members', {
   joinedAt: date('joined_at'),
   userId: uuid('user_id').references(() => profiles.id), // null si no usa portal
   active: boolean('active').notNull().default(true),
+  notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   unique().on(table.gymId, table.documentNumber),

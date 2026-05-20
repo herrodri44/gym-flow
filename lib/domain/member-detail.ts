@@ -21,6 +21,7 @@ export type MemberDetailData = {
     birthDate: string | null
     joinedAt: string | null
     active: boolean
+    notes: string | null
     gymId: string
   }
   gymTimezone: string
@@ -84,6 +85,7 @@ export async function getMemberDetail(
       birthDate: members.birthDate,
       joinedAt: members.joinedAt,
       active: members.active,
+      notes: members.notes,
       gymTimezone: gyms.timezone,
     })
     .from(members)
@@ -229,6 +231,7 @@ export async function getMemberDetail(
       birthDate: row.birthDate,
       joinedAt: row.joinedAt,
       active: row.active,
+      notes: row.notes,
       gymId,
     },
     gymTimezone,
