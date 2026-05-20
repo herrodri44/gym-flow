@@ -27,10 +27,16 @@ function toMonthLabel(yyyyMm: string): string {
   return `${MONTHS_ES[Number(month) - 1]} ${year.slice(2)}`
 }
 
+export interface PlanDistributionPoint {
+  planName: string
+  memberCount: number
+}
+
 export type AnalyticsData = {
   dailyVisits: DailyVisit[]
   heatmap: HeatmapCell[]
   paymentsTrend: PaymentTrendPoint[]
+  planDistribution: PlanDistributionPoint[]
 }
 
 export async function getAnalyticsData(gymId: string): Promise<AnalyticsData> {
@@ -42,13 +48,14 @@ export async function getAnalyticsData(gymId: string): Promise<AnalyticsData> {
 
   const gymTimezone = gymRow?.timezone ?? 'America/Argentina/Buenos_Aires'
 
-  const [dailyVisits, heatmap, paymentsTrend] = await Promise.all([
+  const [dailyVisits, heatmap, paymentsTrend, planDistribution] = await Promise.all([
     getDailyVisits(gymId, gymTimezone),
     getHeatmapData(gymId, gymTimezone),
     getPaymentsTrend(gymId),
+    getPlanDistribution(gymId),
   ])
 
-  return { dailyVisits, heatmap, paymentsTrend }
+  return { dailyVisits, heatmap, paymentsTrend, planDistribution }
 }
 
 // Visits per calendar day for the last 30 days (inclusive), in gym timezone
@@ -122,5 +129,50 @@ export async function getPaymentsTrend(gymId: string): Promise<PaymentTrendPoint
     label: toMonthLabel(r.month_key),
     collected: Number(r.collected),
     pending: Number(r.pending),
+  }))
+}
+
+// Distribution of active members across plans; members without an active enrollment → "Sin plan"
+export async function getPlanDistribution(gymId: string): Promise<PlanDistributionPoint[]> {
+  const rows = await db.execute<{ plan_name: string; member_count: number }>(sql`
+    WITH active_members AS (
+      SELECT id FROM members WHERE gym_id = ${gymId}::uuid AND active = true
+    ),
+    enrolled AS (
+      SELECT e.member_id, e.plan_id
+      FROM enrollments e
+      JOIN active_members am ON am.id = e.member_id
+      WHERE e.gym_id = ${gymId}::uuid AND e.active = true
+    ),
+    plan_counts AS (
+      SELECT
+        mp.name AS plan_name,
+        COUNT(en.member_id)::int AS member_count
+      FROM membership_plans mp
+      LEFT JOIN enrolled en ON en.plan_id = mp.id
+      WHERE mp.gym_id = ${gymId}::uuid AND mp.active = true
+      GROUP BY mp.id, mp.name
+    ),
+    no_plan AS (
+      SELECT
+        'Sin plan' AS plan_name,
+        COUNT(am.id)::int AS member_count
+      FROM active_members am
+      WHERE NOT EXISTS (
+        SELECT 1 FROM enrolled en WHERE en.member_id = am.id
+      )
+    )
+    SELECT plan_name, member_count
+    FROM (
+      SELECT plan_name, member_count FROM plan_counts
+      UNION ALL
+      SELECT plan_name, member_count FROM no_plan WHERE member_count > 0
+    ) combined
+    ORDER BY member_count DESC, plan_name ASC
+  `)
+
+  return rows.map((r) => ({
+    planName: r.plan_name,
+    memberCount: Number(r.member_count),
   }))
 }
