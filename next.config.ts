@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
 export default withSentryConfig(nextConfig, {
   silent: true,
   // Source maps uploaded to Sentry but not shipped to the browser
-  hideSourceMaps: true,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
   // Tree-shake Sentry code not used at runtime
   widenClientFileUpload: false,
   webpack: {
