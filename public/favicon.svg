@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Dark rounded square background -->
+  <rect width="512" height="512" rx="88" fill="#1B2845"/>
+  <!-- Icon mark (blue, scaled to fill ~70% of bg) -->
+  <g transform="translate(76,76) scale(3.6)" fill="none">
+    <path stroke="#65AFFF" stroke-width="8" d="M92.76,54.49 A43,43 0 0,1 54.49,92.76"/>
+    <path stroke="#65AFFF" stroke-width="8" d="M45.51,92.76 A43,43 0 0,1 7.24,54.49"/>
+    <path stroke="#65AFFF" stroke-width="8" d="M7.24,45.51 A43,43 0 0,1 45.51,7.24"/>
+    <path stroke="#65AFFF" stroke-width="8" d="M54.49,7.24 A43,43 0 0,1 92.76,45.51"/>
+    <path stroke="#65AFFF" stroke-width="7" d="M80.83,53.24 A31,31 0 0,1 53.24,80.83"/>
+    <path stroke="#65AFFF" stroke-width="7" d="M46.76,80.83 A31,31 0 0,1 19.17,53.24"/>
+    <path stroke="#65AFFF" stroke-width="7" d="M19.17,46.76 A31,31 0 0,1 46.76,19.17"/>
+    <path stroke="#65AFFF" stroke-width="7" d="M53.24,19.17 A31,31 0 0,1 80.83,46.76"/>
+    <path stroke="#65AFFF" stroke-width="6" d="M67.39,54.66 A18,18 0 1,1 67.39,45.34"/>
+    <path stroke="#65AFFF" stroke-width="6" stroke-linecap="round" d="M67.39,45.34 L50,45.34"/>
+  </g>
+</svg>

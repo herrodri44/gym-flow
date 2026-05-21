@@ -38,8 +38,8 @@ export function AdminNavbar({
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-2 sm:gap-4">
           <MobileNavDrawer gymName={gymName} />
-          <Link href="/admin/dashboard" className="font-bold tracking-tight text-white">
-            GymDex
+          <Link href="/admin/dashboard">
+            <img src="/logo-dark.svg" alt="GymDex" className="h-7 w-auto" />
           </Link>
           <Badge className="bg-[#274060] text-[#E4E4E4] border-[#335C81] hover:bg-[#274060] max-w-30 truncate sm:max-w-none">
             {gymName}

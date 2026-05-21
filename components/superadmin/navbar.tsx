@@ -30,8 +30,8 @@ export function SuperadminNavbar({ userName, userEmail }: SuperadminNavbarProps)
         {/* Main row */}
         <div className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link href="/superadmin/gyms" className="font-semibold">
-              GymDex
+            <Link href="/superadmin/gyms">
+              <img src="/logo.svg" alt="GymDex" className="h-7 w-auto" />
             </Link>
             <nav className="hidden gap-1 sm:flex">
               <Link

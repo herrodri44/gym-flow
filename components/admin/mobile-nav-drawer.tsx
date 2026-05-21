@@ -45,7 +45,7 @@ export function MobileNavDrawer({ gymName }: { gymName: string }) {
       >
         <div className="flex items-center justify-between px-4 py-4 border-b border-[#274060]">
           <div>
-            <p className="text-white font-bold">GymDex</p>
+            <img src="/logo-dark.svg" alt="GymDex" className="h-6 w-auto" />
             <p className="text-xs text-[#65AFFF]">{gymName}</p>
           </div>
           <button

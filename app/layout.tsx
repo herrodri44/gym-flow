@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "GymDex",
   description: "Gestión operativa de gimnasios",
+  icons: { icon: '/favicon.svg' },
 };
 
 export default function RootLayout({
