@@ -27,8 +27,27 @@ export default function MembersLoading() {
         </div>
       </div>
 
-      {/* Split panel */}
-      <div className="flex h-[70vh] min-h-96 gap-4">
+      {/* Mobile: single list skeleton */}
+      <div className="sm:hidden flex flex-col overflow-hidden rounded-xl border bg-white">
+        <div className="border-b p-3">
+          <div className="h-8 animate-pulse rounded-md bg-zinc-100" />
+        </div>
+        <div className="divide-y">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+              <div className="size-2 shrink-0 animate-pulse rounded-full bg-zinc-200" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 animate-pulse rounded bg-zinc-200" style={{ width: `${50 + (i % 5) * 9}%` }} />
+                <div className="h-3 w-20 animate-pulse rounded bg-zinc-100" />
+              </div>
+              <div className="h-3 w-12 animate-pulse rounded bg-zinc-100" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Desktop: split panel skeleton */}
+      <div className="hidden sm:flex h-[70vh] min-h-96 gap-4">
         {/* Left list */}
         <div className="flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border bg-white">
           <div className="border-b p-3">
@@ -39,10 +58,7 @@ export default function MembersLoading() {
               <div key={i} className="flex items-center gap-2.5 px-3 py-2.5">
                 <div className="size-2 shrink-0 animate-pulse rounded-full bg-zinc-200" />
                 <div className="flex-1 space-y-1">
-                  <div
-                    className="h-3.5 animate-pulse rounded bg-zinc-200"
-                    style={{ width: `${55 + (i % 5) * 9}%` }}
-                  />
+                  <div className="h-3.5 animate-pulse rounded bg-zinc-200" style={{ width: `${55 + (i % 5) * 9}%` }} />
                   <div className="h-3 w-20 animate-pulse rounded bg-zinc-100" />
                 </div>
               </div>

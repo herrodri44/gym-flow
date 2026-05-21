@@ -68,14 +68,14 @@ export default async function MemberDetailPage({
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Link href="/admin/members" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}>
           ← Socios
         </Link>
-        <h1 className="text-2xl font-semibold">{member.fullName}</h1>
-        {!member.active && (
-          <Badge variant="secondary">Inactivo</Badge>
-        )}
+        <div className="flex items-center gap-2 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold truncate">{member.fullName}</h1>
+          {!member.active && <Badge variant="secondary" className="shrink-0">Inactivo</Badge>}
+        </div>
       </div>
 
       {/* Profile + Plan */}
@@ -177,20 +177,17 @@ export default async function MemberDetailPage({
           <h2 className="font-semibold">Historial de pagos</h2>
           <div className="rounded-lg border bg-white divide-y text-sm">
             {lastPayments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <span className="font-medium">{formatARS(p.amountArs)}</span>
-                  <span className="ml-3 text-zinc-500">
+              <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{formatARS(p.amountArs)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
                     {formatDate(p.periodStart)} – {formatDate(p.periodEnd)}
-                  </span>
+                  </p>
                 </div>
                 <Badge
+                  className="shrink-0"
                   variant={
-                    p.status === 'paid'
-                      ? 'default'
-                      : p.status === 'overdue'
-                        ? 'destructive'
-                        : 'secondary'
+                    p.status === 'paid' ? 'default' : p.status === 'overdue' ? 'destructive' : 'secondary'
                   }
                 >
                   {p.status === 'paid' ? 'Pagado' : p.status === 'overdue' ? 'Vencido' : 'Pendiente'}

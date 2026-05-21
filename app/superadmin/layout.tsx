@@ -18,7 +18,7 @@ export default async function SuperadminLayout({
   const userEmail = user.email ?? ''
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-svh bg-zinc-50">
       <SuperadminNavbar userName={userName} userEmail={userEmail} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         {children}

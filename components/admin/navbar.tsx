@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { MobileNavDrawer } from '@/components/admin/mobile-nav-drawer'
 
 interface AdminNavbarProps {
   userName: string
@@ -35,11 +36,12 @@ export function AdminNavbar({
   return (
     <header className="sticky top-0 z-40 border-b border-[#274060] bg-[#1B2845]">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <MobileNavDrawer gymName={gymName} />
           <Link href="/admin/dashboard" className="font-bold tracking-tight text-white">
-            Gym Flow
+            GymDex
           </Link>
-          <Badge className="hidden sm:inline-flex bg-[#274060] text-[#E4E4E4] border-[#335C81] hover:bg-[#274060]">
+          <Badge className="bg-[#274060] text-[#E4E4E4] border-[#335C81] hover:bg-[#274060] max-w-30 truncate sm:max-w-none">
             {gymName}
           </Badge>
           <nav className="hidden gap-0.5 sm:flex">

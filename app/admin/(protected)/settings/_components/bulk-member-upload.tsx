@@ -207,7 +207,7 @@ export function BulkMemberUpload() {
               )}
             </div>
 
-            <div className="max-h-80 overflow-y-auto rounded-lg border text-sm">
+            <div className="max-h-80 overflow-auto rounded-lg border text-sm">
               <table className="w-full">
                 <thead className="sticky top-0 bg-zinc-50 text-xs text-zinc-500 uppercase">
                   <tr>
@@ -283,7 +283,7 @@ export function BulkMemberUpload() {
         <li>Seleccioná el archivo exportado acá abajo.</li>
       </ol>
 
-      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50 w-fit">
+      <label className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-2.5 text-sm hover:bg-zinc-50 sm:w-fit sm:justify-start sm:py-1.5">
         Seleccionar archivo CSV
         <input
           ref={fileInputRef}

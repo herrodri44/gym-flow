@@ -106,14 +106,14 @@ function ConfirmCard({
             <InfoRow label="Plan" value="Libre ∞" valueClass="text-emerald-700 font-medium" />
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col-reverse gap-3 sm:grid sm:grid-cols-2">
           <Button variant="outline" onClick={onReset} disabled={isPending}>
             Cancelar
           </Button>
           <Button
             onClick={() => onRegister(result.member.id)}
             disabled={isPending}
-            className={cn(isWarn ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700')}
+            className={cn('h-12', isWarn ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700')}
           >
             {isPending ? 'Registrando…' : 'Confirmar ingreso'}
           </Button>

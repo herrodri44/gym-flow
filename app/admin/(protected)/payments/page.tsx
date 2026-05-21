@@ -27,7 +27,7 @@ export default async function PaymentsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Pagos</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -39,7 +39,7 @@ export default async function PaymentsPage({
             )}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {pendingOverdue > 0 && <MarkOverdueButton count={pendingOverdue} />}
           <GeneratePaymentsButton autoGeneratePayments={autoGeneratePayments} selectedMonth={effectiveMonth} />
           <RegisterPaymentDialog members={activeMembers} />
@@ -47,11 +47,11 @@ export default async function PaymentsPage({
       </div>
 
       {/* Filters */}
-      <form className="flex gap-3 flex-wrap items-center">
+      <form className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <select
           name="status"
           defaultValue={sp.status ?? ''}
-          className="rounded-md border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          className="select select-bordered select-sm w-full sm:w-auto bg-white text-zinc-800"
         >
           <option value="">Todos los estados</option>
           <option value="paid">Pagados</option>
@@ -62,22 +62,24 @@ export default async function PaymentsPage({
           type="month"
           name="month"
           defaultValue={sp.month ?? currentMonth}
-          className="rounded-md border px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          className="input input-bordered input-sm w-full sm:w-auto bg-white text-zinc-800"
         />
-        <button
-          type="submit"
-          className="rounded-md border px-3 py-1.5 text-sm bg-white hover:bg-zinc-50"
-        >
-          Filtrar
-        </button>
-        {hasFilters && (
-          <Link
-            href="/admin/payments"
-            className="px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-800"
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="btn btn-sm btn-neutral flex-1 sm:flex-none"
           >
-            Limpiar
-          </Link>
-        )}
+            Filtrar
+          </button>
+          {hasFilters && (
+            <Link
+              href="/admin/payments"
+              className="btn btn-sm btn-ghost flex-1 sm:flex-none"
+            >
+              Limpiar
+            </Link>
+          )}
+        </div>
       </form>
 
       {payments.length === 0 ? (

@@ -82,10 +82,10 @@ function ResultScreen({
   }
 
   const colorClasses = {
-    green: 'bg-green-50 border-green-300 text-green-900',
-    yellow: 'bg-yellow-50 border-yellow-300 text-yellow-900',
-    red: 'bg-red-50 border-red-300 text-red-900',
-    orange: 'bg-orange-50 border-orange-300 text-orange-900',
+    green: 'bg-green-500 text-white',
+    yellow: 'bg-yellow-400 text-yellow-900',
+    red: 'bg-red-500 text-white',
+    orange: 'bg-orange-400 text-white',
   }
 
   const memberName =
@@ -97,18 +97,16 @@ function ResultScreen({
       : null
 
   return (
-    <div className="space-y-6">
-      <div className={cn('rounded-2xl border-4 p-10 text-center', colorClasses[color])}>
-        <p className="text-3xl font-black">{heading}</p>
-        {memberName && <p className="mt-3 text-lg font-semibold">{memberName}</p>}
+    <div className="flex flex-col items-center gap-6 py-2">
+      <div className={cn('w-full rounded-2xl p-8 text-center', colorClasses[color])}>
+        <p className="text-4xl font-black leading-tight">{heading}</p>
+        {memberName && <p className="mt-3 text-xl font-semibold opacity-90">{memberName}</p>}
         <p className="mt-3 text-sm opacity-80">{body}</p>
       </div>
-      <div className="text-center">
-        <Button variant="outline" onClick={onReset}>
-          Fichar otro ingreso
-        </Button>
-      </div>
-      <p className="text-center text-xs text-zinc-400">{gymName}</p>
+      <Button variant="outline" className="w-full h-12" onClick={onReset}>
+        Fichar otro ingreso
+      </Button>
+      <p className="text-xs text-zinc-400">{gymName}</p>
     </div>
   )
 }

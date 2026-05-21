@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatARS } from '@/lib/utils'
+import { cn, formatARS } from '@/lib/utils'
 import { CreatePlanDialog } from './_components/create-plan-dialog'
 import { PlanActionsMenu } from './_components/plan-actions-menu'
 
@@ -31,7 +31,7 @@ export default async function PlansPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Planes</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -48,7 +48,49 @@ export default async function PlansPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="rounded-lg border bg-white overflow-x-auto">
+          {/* Mobile: card list */}
+          <div className="sm:hidden space-y-2">
+            {[...activePlans, ...inactivePlans].map((plan) => (
+              <div
+                key={plan.id}
+                className={cn('rounded-lg border bg-white px-4 py-3 space-y-2', !plan.active && 'opacity-50')}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{plan.name}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {plan.planType === 'unlimited'
+                        ? 'Libre · acceso ilimitado'
+                        : `Por créditos · ${plan.creditsPerMonth} créd./mes`}
+                    </p>
+                  </div>
+                  <PlanActionsMenu
+                    plan={{
+                      id: plan.id,
+                      name: plan.name,
+                      planType: plan.planType,
+                      priceArs: plan.priceArs,
+                      creditsPerMonth: plan.creditsPerMonth,
+                      description: plan.description,
+                      active: plan.active,
+                    }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold tabular-nums">{formatARS(plan.priceArs)}</span>
+                  <Badge variant={plan.active ? 'default' : 'secondary'}>
+                    {plan.active ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                </div>
+                {plan.description && (
+                  <p className="truncate text-xs text-zinc-400">{plan.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden sm:block rounded-lg border bg-white overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

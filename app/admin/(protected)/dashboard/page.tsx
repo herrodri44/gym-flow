@@ -36,8 +36,8 @@ export default async function DashboardPage() {
     <div className="pb-8">
       {/* Editorial header */}
       <div className="border-b-2 border-[#274060] pb-5 mb-6">
-        <p className="text-[10px] uppercase tracking-[0.25em] text-[#335C81] font-mono mb-1.5">{today}</p>
-        <h1 className="text-5xl font-extrabold leading-none tracking-tight text-[#1B2845]">{gymName}</h1>
+        <p className="text-xs uppercase tracking-[0.15em] sm:tracking-[0.25em] text-[#335C81] font-mono mb-1.5">{today}</p>
+        <h1 className="text-3xl sm:text-5xl font-extrabold leading-none tracking-tight text-[#1B2845]">{gymName}</h1>
         <p className="text-sm text-[#335C81] mt-2">Resumen operativo diario</p>
       </div>
 
@@ -70,7 +70,7 @@ export default async function DashboardPage() {
 
       {/* KPI stat row */}
       <div className="border-y border-[#C8D8E8] py-5 mb-8">
-        <div className="flex flex-wrap items-stretch gap-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-stretch sm:gap-y-4 sm:gap-x-0">
           <StatItem label="Activos" value={String(kpis.activeMembers)} />
           <Divider />
           <StatItem
@@ -144,16 +144,16 @@ function StatItem({
         : 'text-red-500'
 
   return (
-    <div className="flex flex-col px-4 first:pl-0">
+    <div className="flex flex-col rounded-xl border border-[#C8D8E8] bg-white p-3 sm:rounded-none sm:border-0 sm:bg-transparent sm:px-4 sm:py-0 sm:first:pl-0">
       <p className="text-xs text-[#335C81] font-medium leading-none mb-1.5">{label}</p>
-      <p className={cn('text-3xl font-extrabold tabular-nums leading-none', valClass)}>{value}</p>
+      <p className={cn('text-2xl sm:text-3xl font-extrabold tabular-nums leading-none', valClass)}>{value}</p>
       {sub && <p className="text-xs text-[#335C81] mt-1">{sub}</p>}
     </div>
   )
 }
 
 function Divider() {
-  return <div className="w-px bg-[#C8D8E8] mx-1 self-stretch" />
+  return <div className="hidden sm:block w-px bg-[#C8D8E8] mx-1 self-stretch" />
 }
 
 function UnpaidList({

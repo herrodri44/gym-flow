@@ -15,18 +15,18 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50">
-      <header className="border-b bg-white">
+    <div className="min-h-svh bg-background">
+      <header className="sticky top-0 z-40 border-b border-[#274060] bg-[#1B2845]">
         <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4">
-          <span className="font-semibold">Gym Flow</span>
+          <span className="font-bold tracking-tight text-white">GymDex</span>
           <form action={logoutAction}>
-            <button type="submit" className="text-sm text-zinc-500 hover:text-zinc-900">
+            <button type="submit" className="text-sm text-[#C8D8E8] hover:text-white">
               Cerrar sesión
             </button>
           </form>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-8">
+      <main className="mx-auto max-w-2xl px-4 py-6">
         {children}
       </main>
     </div>

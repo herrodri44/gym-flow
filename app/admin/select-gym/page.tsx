@@ -28,9 +28,9 @@ export default async function SelectGymPage() {
       <div className="hidden w-2/5 flex-col items-center justify-center bg-zinc-900 p-12 lg:flex">
         <div className="text-center text-white">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
-            <span className="text-2xl font-black tracking-tight">GF</span>
+            <span className="text-2xl font-black tracking-tight">GD</span>
           </div>
-          <h1 className="text-3xl font-bold">Gym Flow</h1>
+          <h1 className="text-3xl font-bold">GymDex</h1>
           <p className="mt-3 max-w-xs text-sm text-zinc-400">
             Gestión de membresías, asistencia y pagos para gimnasios
           </p>

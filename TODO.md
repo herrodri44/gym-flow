@@ -318,6 +318,23 @@ Al editar un socio y agregarle email por primera vez, `updateMemberAction` actua
 
 ---
 
+## Mobile UX
+
+Goal: cada página debe ser usable desde un celular. La navegación debe estar siempre visible e interactable. Usar daisyUI 5 para primitivos de layout mobile; mantener Base UI para componentes interactivos complejos (dialogs, dropdowns, selects).
+
+- [x] **Instalar daisyUI 5 + definir patrón de navegación mobile** — drawer slide-in con `MobileNavDrawer` en el navbar del admin; daisyUI `menu` para los items; siempre visible en mobile
+- [x] `/g/[slug]` — QR check-in público (mayor prioridad: lo usan socios desde su celular)
+- [x] `/portal/account` — portal del socio
+- [x] `/admin/check-in` — panel de recepción (puede usarse desde tablet/celular)
+- [x] `/admin/dashboard` — dashboard del admin
+- [x] `/admin/members` — lista de socios + detalle
+- [x] `/admin/payments` — libro de pagos
+- [x] `/admin/plans` — gestión de planes
+- [x] `/admin/settings` — configuración del gym
+- [x] `/superadmin/**` — páginas de superadmin
+
+---
+
 ## Done
 
 - [x] **`app/portal/account/page.tsx`** — extracted to `lib/domain/member.ts`

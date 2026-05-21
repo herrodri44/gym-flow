@@ -1,5 +1,5 @@
 {
-  "name": "gym-flow",
+  "name": "gymdex",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -43,6 +43,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^3.2.4",
+    "daisyui": "^5.5.20",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",

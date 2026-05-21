@@ -56,11 +56,11 @@ export function GymQR({ qrDataUrl, checkInUrl, gymName }: Props) {
         height={220}
       />
       <p className="max-w-xs break-all text-center text-xs text-zinc-500">{checkInUrl}</p>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={handleCopy}>
+      <div className="flex w-full flex-col gap-2 sm:flex-row sm:w-auto">
+        <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handleCopy}>
           {copied ? 'Copiado' : 'Copiar enlace'}
         </Button>
-        <Button variant="outline" size="sm" onClick={handlePrint}>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={handlePrint}>
           Imprimir QR
         </Button>
       </div>

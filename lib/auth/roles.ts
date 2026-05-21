@@ -6,7 +6,7 @@ export const ROLES = {
 
 export type UserRole = (typeof ROLES)[keyof typeof ROLES]
 
-export const ACTIVE_GYM_COOKIE = 'gym-flow-active-gym'
+export const ACTIVE_GYM_COOKIE = 'gymdex-active-gym'
 
 export const ROLE_HOME: Record<UserRole, string> = {
   superadmin: '/superadmin/gyms',

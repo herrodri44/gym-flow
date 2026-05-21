@@ -144,15 +144,15 @@ export default async function PortalAccountPage() {
           <h2 className="font-semibold">Historial de pagos</h2>
           <div className="rounded-lg border bg-white divide-y text-sm">
             {recentPayments.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <span className="font-medium">{formatARS(p.amountArs)}</span>
-                  <span className="ml-3 text-zinc-500">
-                    {formatDate(p.periodStart)} –{' '}
-                    {formatDate(p.periodEnd)}
-                  </span>
+              <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{formatARS(p.amountArs)}</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {formatDate(p.periodStart)} – {formatDate(p.periodEnd)}
+                  </p>
                 </div>
                 <Badge
+                  className="shrink-0"
                   variant={
                     p.status === 'paid'
                       ? 'default'

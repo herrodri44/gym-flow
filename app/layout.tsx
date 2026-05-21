@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gym Flow",
+  title: "GymDex",
   description: "Gestión operativa de gimnasios",
 };
 

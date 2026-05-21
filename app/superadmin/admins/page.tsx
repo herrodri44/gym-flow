@@ -17,7 +17,7 @@ export default async function AdministradoresPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Administradores</h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -38,36 +38,61 @@ export default async function AdministradoresPage() {
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Gimnasio asignado</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {admins.map((admin) => (
-                <TableRow key={`${admin.id}-${admin.gymName}`}>
-                  <TableCell className="font-medium">{admin.fullName}</TableCell>
-                  <TableCell className="text-zinc-500">{admin.email}</TableCell>
-                  <TableCell>
-                    {admin.gymName ? (
-                      <Badge variant="secondary">{admin.gymName}</Badge>
-                    ) : (
-                      <span className="text-zinc-400">Sin asignar</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <ResetPasswordDialog adminId={admin.id} adminName={admin.fullName} />
-                  </TableCell>
+        <>
+          {/* Mobile: card list */}
+          <div className="sm:hidden space-y-2">
+            {admins.map((admin) => (
+              <div key={`${admin.id}-${admin.gymName}`} className="rounded-lg border bg-white px-4 py-3 space-y-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm">{admin.fullName}</p>
+                    <p className="text-xs text-zinc-500 truncate">{admin.email}</p>
+                  </div>
+                  <ResetPasswordDialog adminId={admin.id} adminName={admin.fullName} />
+                </div>
+                <div>
+                  {admin.gymName ? (
+                    <Badge variant="secondary">{admin.gymName}</Badge>
+                  ) : (
+                    <span className="text-xs text-zinc-400">Sin asignar</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden sm:block rounded-lg border bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Gimnasio asignado</TableHead>
+                  <TableHead />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {admins.map((admin) => (
+                  <TableRow key={`${admin.id}-${admin.gymName}`}>
+                    <TableCell className="font-medium">{admin.fullName}</TableCell>
+                    <TableCell className="text-zinc-500">{admin.email}</TableCell>
+                    <TableCell>
+                      {admin.gymName ? (
+                        <Badge variant="secondary">{admin.gymName}</Badge>
+                      ) : (
+                        <span className="text-zinc-400">Sin asignar</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <ResetPasswordDialog adminId={admin.id} adminName={admin.fullName} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   )
