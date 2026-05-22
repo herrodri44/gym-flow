@@ -60,10 +60,11 @@ export async function proxy(request: NextRequest) {
   // No agregar código entre createServerClient y getUser()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Rutas siempre públicas (/_next, /api/public — /g/ ya fue manejado arriba)
+  // Rutas siempre públicas (/_next, /api/public, /legal — /g/ ya fue manejado arriba)
   if (
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/public')
+    pathname.startsWith('/api/public') ||
+    pathname.startsWith('/legal')
   ) {
     return supabaseResponse
   }
@@ -96,9 +97,10 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/admin')) {
     if (role !== 'gym_admin') return redirectToHome(request, role)
 
-    // El admin necesita gym activo para todas las rutas salvo el selector
+    // El admin necesita gym activo para todas las rutas salvo el selector y la aceptación de términos
     if (
       pathname !== '/admin/select-gym' &&
+      pathname !== '/admin/accept-terms' &&
       !request.cookies.get(ACTIVE_GYM_COOKIE)
     ) {
       const url = request.nextUrl.clone()

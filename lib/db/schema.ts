@@ -54,6 +54,7 @@ export const profiles = pgTable('profiles', {
   role: userRoleEnum('role').notNull(),
   fullName: text('full_name').notNull(),
   email: text('email').notNull(),
+  termsAcceptedAt: timestamp('terms_accepted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 

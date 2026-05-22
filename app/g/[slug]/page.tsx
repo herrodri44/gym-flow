@@ -3,6 +3,7 @@ import { db } from '@/lib/db/client'
 import { gyms } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { PublicCheckInForm } from './_components/public-check-in-form'
+import Link from 'next/link'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -33,6 +34,15 @@ export default async function PublicCheckInPage({ params }: Props) {
         </div>
         <p className="text-center text-xs text-[#335C81]">
           Dispositivo público — tu documento no se guarda en este navegador.
+        </p>
+        <p className="text-center text-xs text-[#335C81]">
+          <Link href="/legal/privacidad" className="hover:text-[#BACFE0] transition-colors">
+            Política de Privacidad
+          </Link>
+          {' · '}
+          <Link href="/legal/terminos" className="hover:text-[#BACFE0] transition-colors">
+            Términos
+          </Link>
         </p>
       </div>
     </div>

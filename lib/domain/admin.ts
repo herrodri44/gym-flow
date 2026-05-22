@@ -1,10 +1,11 @@
 import { db } from '@/lib/db/client'
-import { gyms, gymAdmins } from '@/lib/db/schema'
+import { gyms, gymAdmins, profiles } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 
 export type AdminLayoutData = {
   gymName: string
   hasMultipleGyms: boolean
+  termsAcceptedAt: Date | null
 }
 
 export type AssignedGym = {
@@ -17,7 +18,7 @@ export async function getAdminLayoutData(
   userId: string,
   activeGymId: string,
 ): Promise<AdminLayoutData | null> {
-  const [[activeGym], allAssigned] = await Promise.all([
+  const [[activeGym], allAssigned, [profile]] = await Promise.all([
     // Verify user is admin of the active gym specifically (not just any gym).
     // Without the activeGymId filter, multi-gym admins could see a wrong gym
     // name in the navbar when switching gyms.
@@ -31,6 +32,11 @@ export async function getAdminLayoutData(
       .select({ id: gymAdmins.id })
       .from(gymAdmins)
       .where(eq(gymAdmins.userId, userId)),
+    db
+      .select({ termsAcceptedAt: profiles.termsAcceptedAt })
+      .from(profiles)
+      .where(eq(profiles.id, userId))
+      .limit(1),
   ])
 
   if (!activeGym) return null
@@ -38,6 +44,7 @@ export async function getAdminLayoutData(
   return {
     gymName: activeGym.name,
     hasMultipleGyms: allAssigned.length > 1,
+    termsAcceptedAt: profile?.termsAcceptedAt ?? null,
   }
 }
 

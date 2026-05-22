@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { logoutAction } from '@/app/(auth)/login/actions'
+import { FooterLegal } from '@/components/footer-legal'
 
 export default async function PortalLayout({
   children,
@@ -15,7 +16,7 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-h-svh bg-background">
+    <div className="min-h-svh bg-background flex flex-col">
       <header className="sticky top-0 z-40 border-b border-[#274060] bg-[#1B2845]">
         <div className="mx-auto flex h-14 max-w-2xl items-center justify-between px-4">
           <span className="font-bold tracking-tight text-white">GymDex</span>
@@ -26,9 +27,10 @@ export default async function PortalLayout({
           </form>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-6">
+      <main className="mx-auto w-full max-w-2xl px-4 py-6 flex-1">
         {children}
       </main>
+      <FooterLegal />
     </div>
   )
 }
