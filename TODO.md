@@ -335,6 +335,60 @@ Goal: cada página debe ser usable desde un celular. La navegación debe estar s
 
 ---
 
+## Legal y Cumplimiento
+
+Requerimientos legales para operar GymDex con gimnasios clientes. Aplica la Ley 25.326 de Protección de Datos Personales (Argentina).
+
+---
+
+### 1. Política de Privacidad (Ley 25.326) — HIGH
+
+**Por qué:** Es obligatoria. Los servidores almacenan datos personales de ciudadanos argentinos (nombre, DNI, asistencia). No cumplirla expone a GymDex a sanciones de la AAIP.
+
+**Contenido mínimo del texto:**
+- GymDex actúa como "encargado de tratamiento" (contenedor tecnológico); el gimnasio es el "responsable del tratamiento"
+- Los datos se usan exclusivamente para que el gimnasio gestione sus membresías
+- GymDex no vende ni comparte datos con terceros ni los usa con fines publicitarios
+- Derecho de acceso, rectificación y supresión (ARCO) — contacto: `hernan@covr.care`
+- Los datos se alojan en servidores de Supabase/Vercel (infraestructura en la nube)
+
+**Implementación técnica:**
+- [ ] Crear página estática `/legal/privacidad` con el texto completo
+- [ ] Agregar `FooterLegal` component (`components/footer-legal.tsx`) con links a Privacidad y Términos
+- [ ] Incluir el footer en los layouts: `app/admin/(protected)/layout.tsx`, `app/portal/layout.tsx`, `app/g/[slug]/page.tsx` (la pública del QR es la más importante)
+
+---
+
+### 2. Términos y Condiciones B2B (Acuerdo de Uso) — HIGH
+
+**Por qué:** Define la relación contractual entre GymDex y cada gimnasio cliente. Protege ante reclamos por caídas del servicio o errores de registro de pagos.
+
+**Contenido mínimo:**
+- **Exención de responsabilidad por cobros:** GymDex es un sistema de registro interno; no procesa, intermedia ni audita pagos. La veracidad de si un socio pagó es responsabilidad exclusiva del gimnasio.
+- **Continuidad del servicio:** El sistema está en fase piloto/desarrollo. GymDex no garantiza disponibilidad 24/7 ni se hace responsable por interrupciones temporales.
+- **Propiedad de datos:** Los datos cargados son propiedad del gimnasio; GymDex tiene derecho a alojarlos en sus servidores únicamente para prestar el servicio.
+- **Confidencialidad:** GymDex se compromete a no revelar ni usar la información comercial del gimnasio ni los datos de sus socios para ningún fin ajeno al servicio.
+
+**Implementación técnica:**
+- [ ] Crear página estática `/legal/terminos` con el texto completo
+- [ ] Agregar link en `FooterLegal`
+- [ ] **Aceptación en primer login:** agregar campo `terms_accepted_at (timestamptz)` a la tabla `profiles`. En el primer ingreso del admin, mostrar un modal no-closeable con el texto resumido y un checkbox "Leí y acepto los Términos y Condiciones". Guardar timestamp al aceptar. El proxy/middleware verifica este campo y redirige a `/onboarding/aceptar-terminos` si es null.
+
+---
+
+### 3. NDA / Cláusula de Confidencialidad — MEDIUM
+
+**Por qué:** El desarrollador tiene acceso directo a la base de datos (lista de clientes del gimnasio, recaudación, etc.). Formaliza la relación de confianza y protege al gimnasio cliente.
+
+**Formato:** No requiere implementación técnica en la app. Es un documento PDF adjunto al Acuerdo de Uso (punto 2) o enviado por separado al firmar como cliente. No hace falta una pantalla para esto.
+
+**Contenido:** "GymDex y su equipo se comprometen a mantener estricta confidencialidad sobre la información comercial del gimnasio y los datos personales de sus asociados, no pudiendo revelarlos ni utilizarlos para ningún fin ajeno a la prestación del servicio."
+
+- [ ] Redactar el documento (fuera de la app, puede ser un Google Doc → PDF)
+- [ ] Enviarlo firmado digitalmente junto al onboarding de cada nuevo gimnasio cliente
+
+---
+
 ## Done
 
 - [x] **`app/portal/account/page.tsx`** — extracted to `lib/domain/member.ts`
