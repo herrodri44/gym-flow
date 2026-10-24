@@ -188,7 +188,7 @@ credits or payments ships with tests.
 
 ### Phase 1 — Billing redesign (payment-anchored periods)
 
-**Status (2026-10-02): implemented and tested locally. Not deployed.**
+**Status (2026-10-24): deployed to production.**
 
 How it works:
 - `lib/db/migrations/0006_membership_periods.sql`: new `membership_periods`
@@ -229,10 +229,12 @@ Remaining:
   most members show as expired. Handled by B15.
 - [x] Production dry run with the cutover rule (2026-10-24, `--grace 14`):
   181 grace, 27 never paid (blocked), 1 active.
-- [ ] Production rollout, in one go: backup → run 0006 in the SQL editor →
-  `UPDATE gym_settings SET grace_days = 14` → push (Vercel deploys). Old code
-  can't insert visits after 0006 (`visit_date` NOT NULL) and new code needs
-  0006, so run the migration and the deploy back to back.
+- [x] Production rollout (2026-10-24): `pg_dump` of public + auth to
+  `~/gymdex-backups/prod-before-0006-2026-10-24T1547.dump` → 0006 +
+  `grace_days = 14` in one transaction → pushed `de39307`, deployed.
+  Result: 308 periods, 181 grace, 27 never paid, 1 active.
+- [ ] Production smoke test: dashboard, one kiosk check-in, register and
+  delete a test payment, run the keep-alive from Vercel → Cron Jobs.
 - [ ] ~2026-11-07: lower `grace_days` to 7.
 - [ ] Follow-up migration 0007 once verified in production: drop
   `payment_records.period_start/period_end/status/enrollment_id`, the
