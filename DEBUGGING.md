@@ -128,9 +128,11 @@ export async function myNewAction(formData: FormData) {
 
 1. **Vercel logs**: Search `fichaje.attempt` + `memberId`. Find the check-in in question. The `outcome` and `creditsRemaining` fields tell you what the system saw at check-in time.
 2. **DB check**: In Supabase:
-   - `visits` table: count rows for this `memberId` this month in gym timezone
-   - `credit_adjustments` table: any manual adjustments?
-   - `enrollments` table: is there an active enrollment?
+   - `SELECT * FROM member_standing WHERE member_id = '<uuid>'` — status,
+     the reference period, credits used/left and grace visits in one row
+   - `membership_periods`: does the member have a period covering today?
+   - `visits` with `period_id IS NULL`: grace (or pre-payment) visits not yet
+     attached to a period
 3. **Reproduce**: Use the fichaje admin panel with the member's document number. Watch the dev terminal for the `fichaje.attempt` log.
 
 ### "Check-in failed / nothing happened"
@@ -144,7 +146,7 @@ export async function myNewAction(formData: FormData) {
 Check the rate limiter first:
 
 ```
-Vercel logs → search: "rate_limit.hit"  (once this is instrumented — see TODO.md MEDIUM)
+Vercel logs → search: "rate_limit.hit"  (once this is instrumented — see PLAN.md Backlog)
 ```
 
 Until then: check Upstash Redis in the Upstash console — if requests from the kiosk IP are being rate-limited, the limiter is configured too tightly or the kiosk is looping.
@@ -183,11 +185,13 @@ What is the likely cause and how do I fix it?
 A member (id: "abc") should have had 3 credits left but the system showed 0.
 Here is the relevant DB state:
 
-enrollments: [paste row]
-visits this month: [paste rows]
+member_standing: [paste row]
+membership_periods: [paste rows]
+visits for the period (and with period_id null): [paste rows]
 credit_adjustments: [paste rows]
 
-The credits logic is in lib/domain/credits.ts: [paste function]
+Credits are computed by the member_standing view in
+lib/db/migrations/0006_membership_periods.sql: [paste view]
 
 What went wrong?
 ```
@@ -200,7 +204,9 @@ What went wrong?
 |---|---|---|
 | `fichaje.attempt` | info | Every check-in attempt (public kiosk + admin panel) |
 | `fichaje.attempt` | warn | `invalid_gym` — slug not found (public kiosk) |
+| `payment.recorded` | info | Payment + period saved (`periodStart`, `periodEnd`) |
 | `registerPayment` | error | DB error saving a payment record |
+| `deletePayment` | error | DB error deleting a payment |
 | `registerFichaje` | error | DB error saving a visit row |
 
 ### `fichaje.attempt` context fields
@@ -211,11 +217,14 @@ What went wrong?
   memberId?: string       // UUID of the member (undefined for not_found / invalid_gym)
   channel: 'fichaje_public' | 'fichaje_admin'
   outcome:
-    | 'allowed'           // check-in recorded, credits > 0 or unlimited
+    | 'ok'                // check-in recorded, credits > 0 or unlimited
     | 'over_limit_allowed'// check-in recorded, credits exhausted but gym allows it
+    | 'grace_allowed'     // check-in recorded, period expired but within grace days
     | 'over_limit_denied' // check-in NOT recorded, credits exhausted
     | 'already_today'     // check-in NOT recorded, already checked in today
-    | 'no_active_enrollment' // check-in NOT recorded, no plan
+    | 'expired'           // check-in NOT recorded, period ended and grace is over
+    | 'no_plan'           // check-in NOT recorded, member never paid
+    | 'not_started'       // check-in NOT recorded, period starts in the future
     | 'not_found'         // check-in NOT recorded, document number unknown
     | 'invalid_gym'       // check-in NOT recorded, gym slug not found
   creditsRemaining?: number | null  // null = unlimited, 0 = exhausted, N = remaining
@@ -250,20 +259,9 @@ Remove before committing. The `debug.` prefix makes it easy to `grep` and clean 
 Use Supabase's built-in SQL editor (project dashboard → SQL Editor):
 
 ```sql
--- What credits does this member have right now?
-SELECT
-  e.id AS enrollment_id,
-  p.credits_per_month,
-  p.plan_type,
-  COUNT(v.id) AS visits_this_month,
-  COALESCE(SUM(ca.delta), 0) AS adjustments
-FROM enrollments e
-JOIN membership_plans p ON p.id = e.plan_id
-LEFT JOIN visits v ON v.member_id = e.member_id
-  AND v.visited_at >= date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')
-LEFT JOIN credit_adjustments ca ON ca.member_id = e.member_id
-  AND ca.gym_id = e.gym_id
-WHERE e.member_id = '<member-uuid>'
-  AND e.active = 'true'
-GROUP BY e.id, p.credits_per_month, p.plan_type;
+-- What can this member do right now? (status, period, credits)
+SELECT status, plan_name, start_date, end_date, credits_granted, credits_used,
+       credits_adjusted, credits_left, grace_visits, days_left, days_since_expiry
+FROM member_standing
+WHERE member_id = '<member-uuid>';
 ```

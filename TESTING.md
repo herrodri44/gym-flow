@@ -9,7 +9,8 @@
 ## Commands
 
 ```bash
-npm test              # single run (CI)
+npm test              # unit tests, single run (CI)
+npm run test:integration  # against local Postgres (supabase start + npm run db:local:reset)
 npm run test:watch    # watch mode (development)
 npm run test:coverage # single run + lcov coverage report
 ```
@@ -21,12 +22,14 @@ tests/
   helpers/
     db-mock.ts          # shared mock factories for Drizzle's chainable API
   unit/
-    credits.test.ts     # getAvailableCredits — lib/domain/credits.ts
-    fichaje.test.ts     # validateFichaje / validateMemberFichaje — lib/domain/fichaje.ts
-    enrollment.test.ts  # enrollMemberAction — app/admin/(protected)/plans/actions.ts
-    payments.test.ts    # registerPaymentAction, markOverdueAction, updatePaymentStatusAction
+    period-math.test.ts # billing date rules B1–B4 — lib/domain/period-math.ts (pure)
+    fichaje.test.ts     # decideFichaje check-in rules — lib/domain/fichaje.ts (pure)
+    payments.test.ts    # registerPaymentAction / deletePaymentAction parsing + delegation
     proxy.test.ts       # route protection and rate limiting — proxy.ts
-    kiosk.test.ts       # publicFichajeAction — app/g/[slug]/actions.ts
+    kiosk.test.ts       # publicFichajeAction, incl. "no member data leaks"
+  integration/
+    helpers.ts          # creates/deletes an isolated test gym per file; refuses non-local DBs
+    billing.test.ts     # recordPayment, member_standing, grace, one visit/day — real Postgres
 ```
 
 ## How DB mocking works
@@ -103,9 +106,9 @@ The `.mts` extension forces ESM, which is required by `vite-tsconfig-paths`.
 
 | Area | Reason |
 |---|---|
-| SQL correctness (timezone math, CTEs) | Requires a real Postgres database — see TODO.md LOW section |
-| Kiosk UI (success/error screens) | Requires Playwright + running server — see TODO.md LOW section |
-| Admin golden path E2E | Requires Playwright + running server — see TODO.md LOW section |
+| SQL correctness (timezone math, CTEs) | Requires a real Postgres database — see PLAN.md (Phase 3 / Backlog) |
+| Kiosk UI (success/error screens) | Requires Playwright + running server — see PLAN.md (Phase 3 / Backlog) |
+| Admin golden path E2E | Requires Playwright + running server — see PLAN.md (Phase 3 / Backlog) |
 | RLS policies | Tested via Supabase Dashboard or a seeded integration test DB |
 
 ## Adding new tests

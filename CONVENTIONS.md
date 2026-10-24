@@ -227,7 +227,11 @@ hierarchy (e.g. `value as SpecificSubtype`), never widening or escaping.
 
 ## Tests are mandatory for critical flows
 
-The test suite lives in `tests/unit/`. Run it with `npm test`.
+Unit tests live in `tests/unit/` (`npm test`). Integration tests run
+against the local Supabase Postgres in `tests/integration/`
+(`npm run test:integration`, needs `supabase start` + `npm run db:local:reset`).
+Prefer integration tests for anything whose correctness lives in SQL
+(timezones, constraints, the `member_standing` view).
 
 **Run `npm test` after every change** that touches a domain function, a
 server action, or any logic that has existing coverage. If a test breaks,
@@ -236,9 +240,9 @@ fix it before considering the task done — do not comment out or skip tests.
 **Write new tests when adding or modifying critical flows.** The critical
 flows are:
 
-- Fichaje (check-in): `lib/domain/fichaje.ts`, `lib/domain/credits.ts`
-- Enrollment / plan changes: `app/admin/(protected)/plans/actions.ts`
-- Payment recording and status updates: `lib/domain/payments.ts`
+- Fichaje (check-in): `lib/domain/fichaje.ts`, `lib/domain/standing.ts`
+- Billing periods: `lib/domain/period-math.ts`, the `member_standing` view
+- Payment recording / deletion: `lib/domain/payments.ts`
 
 Any new domain function or server action that touches one of these flows
 needs a corresponding test file (or additions to an existing one) before
