@@ -60,10 +60,12 @@ export async function proxy(request: NextRequest) {
   // No agregar código entre createServerClient y getUser()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Rutas siempre públicas (/_next, /api/public, /legal — /g/ ya fue manejado arriba)
+  // Rutas siempre públicas (/_next, /api/public, /legal — /g/ ya fue manejado arriba).
+  // /api/cron valida CRON_SECRET en cada route handler.
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/public') ||
+    pathname.startsWith('/api/cron') ||
     pathname.startsWith('/legal')
   ) {
     return supabaseResponse
