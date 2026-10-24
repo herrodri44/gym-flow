@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { formatARS } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { addDays } from '@/lib/domain/period-math'
+import { formatDay } from '@/lib/standing-ui'
 import {
   Table,
   TableBody,
@@ -14,107 +13,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { PaymentRowActions } from './payment-row-actions'
-import { bulkUpdateStatusAction, bulkDeleteAction } from '../actions'
 import type { PaymentRow } from '@/lib/domain/payments'
 
-const statusVariant = {
-  paid: 'default',
-  pending: 'secondary',
-  overdue: 'destructive',
-} as const
-
-const statusLabel = {
-  paid: 'Pagado',
-  pending: 'Pendiente',
-  overdue: 'Vencido',
-}
-
-function formatPeriod(ts: Date | null) {
-  if (!ts) return '—'
-  return ts.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-}
-
-function formatDate(ts: Date | null) {
-  if (!ts) return '—'
-  return ts.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+function periodLabel(p: PaymentRow) {
+  if (!p.startDate || !p.endDate) return 'Sin período'
+  return `${formatDay(p.startDate)} → ${formatDay(addDays(p.endDate, -1))}`
 }
 
 export function PaymentsTable({ payments }: { payments: PaymentRow[] }) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [pending, startTransition] = useTransition()
-
-  const allSelected = payments.length > 0 && selectedIds.size === payments.length
-  const someSelected = selectedIds.size > 0 && selectedIds.size < payments.length
-
-  function toggleAll() {
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(payments.map((p) => p.id)))
-    }
-  }
-
-  function toggleRow(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function runBulk(fn: (ids: string[]) => Promise<unknown>) {
-    startTransition(async () => {
-      await fn(Array.from(selectedIds))
-      setSelectedIds(new Set())
-    })
-  }
-
   return (
     <div className="space-y-2">
-      {selectedIds.size > 0 && (
-        <div className="hidden sm:flex items-center gap-3 rounded-lg border bg-zinc-50 px-4 py-2">
-          <span className="text-sm font-medium text-zinc-700">
-            {selectedIds.size} {selectedIds.size === 1 ? 'seleccionado' : 'seleccionados'}
-          </span>
-          <div className="ml-auto flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() => runBulk((ids) => bulkUpdateStatusAction(ids, 'paid'))}
-            >
-              Marcar pagados
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              onClick={() => runBulk((ids) => bulkUpdateStatusAction(ids, 'pending'))}
-            >
-              Marcar pendientes
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={pending}
-              onClick={() => {
-                const count = selectedIds.size
-                if (
-                  !confirm(
-                    `¿Eliminar ${count} registro${count > 1 ? 's' : ''}? Esta acción no se puede deshacer.`,
-                  )
-                )
-                  return
-                runBulk(bulkDeleteAction)
-              }}
-            >
-              Eliminar
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Mobile: card list */}
       <div className="sm:hidden space-y-2">
         {payments.map((p) => (
@@ -124,13 +32,13 @@ export function PaymentsTable({ payments }: { payments: PaymentRow[] }) {
                 <Link href={`/admin/members/${p.memberId}`} className="block truncate text-sm font-medium hover:underline">
                   {p.memberName}
                 </Link>
-                <p className="mt-0.5 text-xs capitalize text-zinc-500">{formatPeriod(p.periodStart)}</p>
+                <p className="mt-0.5 text-xs text-zinc-500">{p.planName ?? '—'} · {periodLabel(p)}</p>
               </div>
-              <PaymentRowActions payment={{ id: p.id, status: p.status }} />
+              <PaymentRowActions paymentId={p.id} memberId={p.memberId} />
             </div>
             <div className="flex items-center justify-between">
               <span className="font-semibold tabular-nums">{formatARS(p.amountArs)}</span>
-              <Badge variant={statusVariant[p.status]}>{statusLabel[p.status]}</Badge>
+              <span className="text-xs text-zinc-500">Pagó {formatDay(p.paidOn)}</span>
             </div>
             {p.notes && <p className="truncate text-xs text-zinc-400">{p.notes}</p>}
           </div>
@@ -142,59 +50,30 @@ export function PaymentsTable({ payments }: { payments: PaymentRow[] }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = someSelected
-                  }}
-                  onChange={toggleAll}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-              </TableHead>
+              <TableHead>Fecha de pago</TableHead>
               <TableHead>Socio</TableHead>
+              <TableHead>Plan</TableHead>
               <TableHead>Período</TableHead>
               <TableHead className="text-right">Monto</TableHead>
-              <TableHead className="text-center">Estado</TableHead>
-              <TableHead>Fecha de pago</TableHead>
               <TableHead>Notas</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
           <TableBody>
             {payments.map((p) => (
-              <TableRow key={p.id} data-state={selectedIds.has(p.id) ? 'selected' : undefined}>
-                <TableCell>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(p.id)}
-                    onChange={() => toggleRow(p.id)}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                </TableCell>
+              <TableRow key={p.id}>
+                <TableCell className="text-zinc-500 tabular-nums">{formatDay(p.paidOn)}</TableCell>
                 <TableCell className="font-medium">
                   <Link href={`/admin/members/${p.memberId}`} className="hover:underline">
                     {p.memberName}
                   </Link>
                 </TableCell>
-                <TableCell className="text-zinc-600 capitalize">
-                  {formatPeriod(p.periodStart)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums font-medium">
-                  {formatARS(p.amountArs)}
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant={statusVariant[p.status]}>{statusLabel[p.status]}</Badge>
-                </TableCell>
-                <TableCell className="text-zinc-500 tabular-nums">
-                  {formatDate(p.paidAt)}
-                </TableCell>
-                <TableCell className="text-zinc-400 max-w-50 truncate">
-                  {p.notes ?? '—'}
-                </TableCell>
+                <TableCell className="text-zinc-600">{p.planName ?? '—'}</TableCell>
+                <TableCell className="text-zinc-600 tabular-nums">{periodLabel(p)}</TableCell>
+                <TableCell className="text-right tabular-nums font-medium">{formatARS(p.amountArs)}</TableCell>
+                <TableCell className="text-zinc-400 max-w-50 truncate">{p.notes ?? '—'}</TableCell>
                 <TableCell>
-                  <PaymentRowActions payment={{ id: p.id, status: p.status }} />
+                  <PaymentRowActions paymentId={p.id} memberId={p.memberId} />
                 </TableCell>
               </TableRow>
             ))}

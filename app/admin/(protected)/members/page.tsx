@@ -1,6 +1,6 @@
 // Auth lives in the layout; all data fetching is in lib/domain/members-list.ts.
 import { cookies } from 'next/headers'
-import { getMembersList } from '@/lib/domain/members-list'
+import { getMembersList, parseSeenFilter, parseStandingFilter } from '@/lib/domain/members-list'
 import type { MembersListFilters } from '@/lib/domain/members-list'
 import { ACTIVE_GYM_COOKIE } from '@/lib/auth/roles'
 import { CreateMemberDialog } from './_components/create-member-dialog'
@@ -15,7 +15,8 @@ export default async function MembersPage({
   const filters: MembersListFilters = {
     q: typeof sp.q === 'string' ? sp.q.trim() : '',
     status: (typeof sp.status === 'string' ? sp.status : 'active') as MembersListFilters['status'],
-    payment: (typeof sp.payment === 'string' ? sp.payment : 'all') as MembersListFilters['payment'],
+    payment: parseStandingFilter(typeof sp.payment === 'string' ? sp.payment : undefined),
+    seen: parseSeenFilter(typeof sp.seen === 'string' ? sp.seen : undefined),
     page: Math.max(1, Number(typeof sp.page === 'string' ? sp.page : '1') || 1),
   }
 

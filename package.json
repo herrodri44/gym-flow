@@ -9,7 +9,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:local:reset": "node scripts/local-db.mjs",
+    "db:cutover-dry-run": "node scripts/cutover-dry-run.mjs",
+    "test:integration": "vitest run --config vitest.integration.config.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

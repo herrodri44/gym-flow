@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { MemberActionsMenu } from './member-actions-menu'
 import type { MemberRow, MembersListFilters } from '@/lib/domain/members-list'
+import { STANDING_DOT_CLASS, STANDING_LABEL, STANDING_TEXT_CLASS, formatDay } from '@/lib/standing-ui'
+import { RECENT_VISIT_DAYS } from '@/lib/domain/activity'
 
 function buildUrl(
   filters: MembersListFilters,
@@ -19,6 +21,7 @@ function buildUrl(
   if (merged.q) params.set('q', merged.q)
   if (merged.status !== 'active') params.set('status', merged.status)
   if (merged.payment !== 'all') params.set('payment', merged.payment)
+  if (merged.seen !== 'all') params.set('seen', merged.seen)
   if ((merged.page ?? 1) > 1) params.set('page', String(merged.page))
   const qs = params.toString()
   return `/admin/members${qs ? '?' + qs : ''}`
@@ -57,9 +60,16 @@ const STATUS_TABS: { value: MembersListFilters['status']; label: string }[] = [
 
 const PAYMENT_TABS: { value: MembersListFilters['payment']; label: string }[] = [
   { value: 'all', label: 'Todos' },
-  { value: 'paid', label: 'Al día' },
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'overdue', label: 'Vencida' },
+  { value: 'active', label: 'Al día' },
+  { value: 'grace', label: 'En gracia' },
+  { value: 'lapsed', label: 'Vencido' },
+  { value: 'no_plan', label: 'Sin plan' },
+]
+
+const SEEN_TABS: { value: MembersListFilters['seen']; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'recent', label: `Vino (${RECENT_VISIT_DAYS} d)` },
+  { value: 'away', label: `Sin venir +${RECENT_VISIT_DAYS} d` },
 ]
 
 type Props = {
@@ -74,6 +84,7 @@ function SearchBar({ filters }: { filters: MembersListFilters }) {
     <form method="get" className="flex gap-1.5">
       <input type="hidden" name="status" value={filters.status} />
       <input type="hidden" name="payment" value={filters.payment} />
+      <input type="hidden" name="seen" value={filters.seen} />
       <Input name="q" defaultValue={filters.q} placeholder="Buscar…" className="h-8 flex-1 text-sm" />
       <Button type="submit" variant="outline" size="sm" className="h-8 px-2 text-xs">Ir</Button>
     </form>
@@ -95,8 +106,10 @@ function Pagination({ filters, totalPages }: { filters: MembersListFilters; tota
   )
 }
 
-function statusDot(m: MemberRow) {
-  return !m.enrollment ? 'bg-zinc-300' : m.hasPaid ? 'bg-emerald-500' : 'bg-red-400'
+function standingDetail(m: MemberRow) {
+  if (m.standing === 'active' || m.standing === 'not_started') return `Vence ${formatDay(m.validUntil)}`
+  if (m.standing === 'grace' || m.standing === 'expired') return `Venció hace ${m.daysSinceExpiry} d`
+  return null
 }
 
 export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
@@ -126,6 +139,16 @@ export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
               )}>{tab.label}</Link>
           ))}
         </div>
+        <div className="hidden sm:block w-px self-stretch bg-zinc-200" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wide mr-1">Asistencia</span>
+          {SEEN_TABS.map((tab) => (
+            <Link key={tab.value} href={buildUrl(filters, { seen: tab.value, page: 1 })}
+              className={cn('rounded-full px-3 py-1 text-sm font-medium transition-colors',
+                filters.seen === tab.value ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              )}>{tab.label}</Link>
+          ))}
+        </div>
       </div>
 
       {/* Mobile: linked list */}
@@ -136,19 +159,17 @@ export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
             <Link key={m.id} href={`/admin/members/${m.id}`}
               className="flex items-center gap-3 border-b px-4 py-3.5 last:border-0 hover:bg-zinc-50"
             >
-              <span className={cn('size-2 shrink-0 rounded-full', statusDot(m))} />
+              <span className={cn('size-2 shrink-0 rounded-full', STANDING_DOT_CLASS[m.standing])} />
               <div className="flex-1 min-w-0">
                 <div className="truncate text-sm font-medium text-zinc-800">{m.fullName}</div>
                 <div className="text-xs text-zinc-400">DNI {m.documentNumber}</div>
               </div>
               <div className="flex flex-col items-end gap-0.5 shrink-0">
-                {m.enrollment && (
-                  <span className={cn('text-xs font-medium', m.hasPaid ? 'text-emerald-600' : 'text-red-500')}>
-                    {m.hasPaid ? 'Al día' : 'Pendiente'}
-                  </span>
-                )}
-                {m.enrollment?.planType !== 'unlimited' && m.availableCredits != null && (
-                  <span className="text-xs text-zinc-400">{m.availableCredits} créd.</span>
+                <span className={cn('text-xs font-medium', STANDING_TEXT_CLASS[m.standing])}>
+                  {STANDING_LABEL[m.standing]}
+                </span>
+                {m.standing === 'active' && m.creditsLeft != null && (
+                  <span className="text-xs text-zinc-400">{m.creditsLeft} créd.</span>
                 )}
               </div>
               <ChevronRight className="size-4 text-zinc-300 shrink-0" />
@@ -171,7 +192,7 @@ export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
                   selectedId === m.id && 'bg-zinc-100'
                 )}
               >
-                <span className={cn('size-2 shrink-0 rounded-full', statusDot(m))} />
+                <span className={cn('size-2 shrink-0 rounded-full', STANDING_DOT_CLASS[m.standing])} />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-zinc-800">{m.fullName}</div>
                   <div className="text-xs text-zinc-400">{m.documentNumber}</div>
@@ -211,26 +232,27 @@ export function MembersSplitPanel({ rows, filters, totalPages }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <InfoCard label="Plan">
-                  {selected.enrollment
-                    ? <span className="font-medium">{selected.enrollment.planName}</span>
+                  {selected.planName
+                    ? <span className="font-medium">{selected.planName}</span>
                     : <span className="text-zinc-400">Sin plan</span>}
                 </InfoCard>
-                <InfoCard label="Créditos este mes">
-                  {selected.enrollment?.planType === 'unlimited'
-                    ? <span className="font-medium">Ilimitado ∞</span>
-                    : selected.availableCredits != null
-                      ? <span className={cn('text-lg font-bold',
-                          selected.availableCredits <= 0 ? 'text-red-600'
-                          : selected.availableCredits <= 2 ? 'text-amber-600' : 'text-emerald-700'
-                        )}>{selected.availableCredits} disp.</span>
-                      : <span className="text-zinc-400">—</span>}
+                <InfoCard label="Créditos del período">
+                  {selected.standing !== 'active'
+                    ? <span className="text-zinc-400">—</span>
+                    : selected.planType === 'unlimited'
+                      ? <span className="font-medium">Ilimitado ∞</span>
+                      : <span className={cn('text-lg font-bold',
+                          (selected.creditsLeft ?? 0) <= 0 ? 'text-red-600'
+                          : (selected.creditsLeft ?? 0) <= 2 ? 'text-amber-600' : 'text-emerald-700'
+                        )}>{selected.creditsLeft} disp.</span>}
                 </InfoCard>
                 <InfoCard label="Cuota">
-                  {selected.enrollment
-                    ? <span className={cn('font-medium', selected.hasPaid ? 'text-emerald-700' : 'text-red-600')}>
-                        {selected.hasPaid ? '✓ Al día' : '✗ Pendiente'}
-                      </span>
-                    : <span className="text-zinc-400">—</span>}
+                  <span className={cn('font-medium', STANDING_TEXT_CLASS[selected.standing])}>
+                    {STANDING_LABEL[selected.standing]}
+                  </span>
+                  {standingDetail(selected) && (
+                    <div className="text-xs text-zinc-500">{standingDetail(selected)}</div>
+                  )}
                 </InfoCard>
                 <InfoCard label="Último fichaje">
                   <span className="font-medium">{formatDateTime(selected.lastVisit)}</span>

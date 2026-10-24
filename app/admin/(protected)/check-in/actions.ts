@@ -1,129 +1,99 @@
 'use server'
 
 import { db } from '@/lib/db/client'
-import { gyms, members } from '@/lib/db/schema'
+import { members } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import {
   validateFichaje,
-  validateMemberFichaje,
+  evaluateMemberFichaje,
   recordVisit,
   type FichajeResult,
+  type MemberFichajeResult,
 } from '@/lib/domain/fichaje'
 import { logger } from '@/lib/logger'
 import * as Sentry from '@sentry/nextjs'
 
 type ErrorResult = { status: 'error'; message: string }
-type RegisteredResult = {
+
+export type RegisteredResult = {
   status: 'registered'
-  wasOverLimit: boolean
+  outcome: 'ok' | 'over_limit_allowed' | 'grace_allowed'
   memberName: string
+  /** Credits left after this visit; null for unlimited plans or grace visits */
   creditsLeft: number | null
+  validUntil: string | null
 }
 
-// Extends the base gym admin context with the gym's timezone, which is
-// required for all fichaje domain functions.
-async function getContext() {
-  const ctx = await requireGymAdmin()
-  if (!ctx) return null
-
-  const [gym] = await db
-    .select({ timezone: gyms.timezone })
-    .from(gyms)
-    .where(eq(gyms.id, ctx.gymId))
+async function findMember(memberId: string, gymId: string) {
+  const [member] = await db
+    .select({ id: members.id, fullName: members.fullName, documentNumber: members.documentNumber })
+    .from(members)
+    .where(and(eq(members.id, memberId), eq(members.gymId, gymId), eq(members.active, true)))
     .limit(1)
-
-  if (!gym) return null
-  return { ...ctx, gymTimezone: gym.timezone }
+  return member ?? null
 }
 
 // Search and validate — no side effects. Use to preview result before registering.
-export async function searchFichajeAction(
-  query: string,
-): Promise<FichajeResult | ErrorResult> {
-  const ctx = await getContext()
+export async function searchFichajeAction(query: string): Promise<FichajeResult | ErrorResult> {
+  const ctx = await requireGymAdmin()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
-  return validateFichaje(query, ctx.gymId, ctx.gymTimezone, 'fichaje_admin')
+  const { result } = await validateFichaje(query, ctx.gymId, 'fichaje_admin')
+  return result
 }
 
 // Validate a specific member by ID — no side effects. Use after selecting from multiple_matches.
-export async function validateMemberFichajeAction(
-  memberId: string,
-): Promise<Exclude<FichajeResult, { status: 'multiple_matches' } | { status: 'not_found' }> | ErrorResult> {
-  const ctx = await getContext()
+export async function validateMemberFichajeAction(memberId: string): Promise<MemberFichajeResult | ErrorResult> {
+  const ctx = await requireGymAdmin()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
-  const [member] = await db
-    .select({
-      id: members.id,
-      fullName: members.fullName,
-      documentNumber: members.documentNumber,
-    })
-    .from(members)
-    .where(and(eq(members.id, memberId), eq(members.gymId, ctx.gymId)))
-    .limit(1)
-
+  const member = await findMember(memberId, ctx.gymId)
   if (!member) return { status: 'error', message: 'Socio no encontrado' }
 
-  return validateMemberFichaje(member, ctx.gymId, ctx.gymTimezone)
+  return (await evaluateMemberFichaje(member, ctx.gymId)).result
 }
 
-// Validate again and register the visit atomically.
+// Validate again (state may have changed since the preview) and register the visit.
 export async function registerFichajeAction(
   memberId: string,
-): Promise<RegisteredResult | Exclude<FichajeResult, { status: 'ok' | 'over_limit_allowed' | 'multiple_matches' | 'not_found' }> | ErrorResult> {
-  const ctx = await getContext()
+): Promise<RegisteredResult | MemberFichajeResult | ErrorResult> {
+  const ctx = await requireGymAdmin()
   if (!ctx) return { status: 'error', message: 'No autorizado' }
 
-  const [member] = await db
-    .select({
-      id: members.id,
-      fullName: members.fullName,
-      documentNumber: members.documentNumber,
-    })
-    .from(members)
-    .where(and(eq(members.id, memberId), eq(members.gymId, ctx.gymId)))
-    .limit(1)
-
+  const member = await findMember(memberId, ctx.gymId)
   if (!member) return { status: 'error', message: 'Socio no encontrado' }
 
-  const validation = await validateMemberFichaje(member, ctx.gymId, ctx.gymTimezone)
+  const { result, visit } = await evaluateMemberFichaje(member, ctx.gymId)
+  const log = { gymId: ctx.gymId, memberId, channel: 'fichaje_admin' }
 
-  if (validation.status === 'ok') {
-    try {
-      await recordVisit(memberId, ctx.gymId, 'fichaje_admin', false, ctx.user.id)
-    } catch (err) {
-      Sentry.captureException(err, { extra: { gymId: ctx.gymId, memberId, action: 'registerFichaje' } })
-      logger.error(err as Error, { gymId: ctx.gymId, memberId, action: 'registerFichaje' })
-      return { status: 'error', message: 'No se pudo registrar el fichaje' }
-    }
-    logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: 'allowed', creditsRemaining: validation.creditsLeft })
-    return {
-      status: 'registered',
-      wasOverLimit: false,
-      memberName: member.fullName,
-      creditsLeft: validation.creditsLeft,
-    }
+  if (!visit) {
+    logger.info('fichaje.attempt', { ...log, outcome: result.status })
+    return result
   }
 
-  if (validation.status === 'over_limit_allowed') {
-    try {
-      await recordVisit(memberId, ctx.gymId, 'fichaje_admin', true, ctx.user.id)
-    } catch (err) {
-      Sentry.captureException(err, { extra: { gymId: ctx.gymId, memberId, action: 'registerFichaje' } })
-      logger.error(err as Error, { gymId: ctx.gymId, memberId, action: 'registerFichaje' })
-      return { status: 'error', message: 'No se pudo registrar el fichaje' }
-    }
-    logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: 'over_limit_allowed', creditsRemaining: 0 })
-    return {
-      status: 'registered',
-      wasOverLimit: true,
-      memberName: member.fullName,
-      creditsLeft: null,
-    }
+  let inserted: boolean
+  try {
+    inserted = await recordVisit({ memberId, gymId: ctx.gymId, channel: 'fichaje_admin', visit, recordedBy: ctx.user.id })
+  } catch (err) {
+    Sentry.captureException(err, { extra: { ...log, action: 'registerFichaje' } })
+    logger.error(err as Error, { ...log, action: 'registerFichaje' })
+    return { status: 'error', message: 'No se pudo registrar el fichaje' }
   }
 
-  logger.info('fichaje.attempt', { gymId: ctx.gymId, memberId, channel: 'fichaje_admin', outcome: validation.status })
-  return validation
+  if (!inserted) {
+    logger.info('fichaje.attempt', { ...log, outcome: 'already_today' })
+    return { status: 'already_today', member }
+  }
+
+  const creditsLeft = result.status === 'ok' && result.creditsLeft !== null ? result.creditsLeft - 1 : null
+  logger.info('fichaje.attempt', { ...log, outcome: result.status, creditsRemaining: creditsLeft })
+
+  return {
+    status: 'registered',
+    outcome: result.status as RegisteredResult['outcome'],
+    memberName: member.fullName,
+    creditsLeft,
+    validUntil: 'validUntil' in result ? result.validUntil : null,
+  }
 }

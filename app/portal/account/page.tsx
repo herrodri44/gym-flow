@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getMemberPortalData } from '@/lib/domain/member'
 import { cn, formatARS } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { addDays } from '@/lib/domain/period-math'
+import { STANDING_LABEL, STANDING_TEXT_CLASS, formatDay } from '@/lib/standing-ui'
 
 function formatDate(value: string | Date | null | undefined) {
   if (!value) return '—'
@@ -42,7 +43,9 @@ export default async function PortalAccountPage() {
     )
   }
 
-  const { member, gym, enrollment, lastVisit, creditsLeft, usedCredits, hasPaid, recentPayments } = data
+  const { member, gym, standing, lastVisit, recentPeriods } = data
+  const status = standing?.status ?? 'no_plan'
+  const validUntil = standing?.endDate ? addDays(standing.endDate, -1) : null
 
   return (
     <div className="space-y-6">
@@ -86,83 +89,70 @@ export default async function PortalAccountPage() {
         {/* Plan & credits */}
         <Card className="p-5 space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Membresía</h2>
-          {enrollment ? (
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Plan</dt>
-                <dd className="font-medium">{enrollment.planName}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Precio</dt>
-                <dd>{formatARS(enrollment.priceArs)} / mes</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Créditos este mes</dt>
-                <dd>
-                  {enrollment.planType === 'unlimited' ? (
-                    <span className="text-green-600 font-semibold">Acceso ilimitado</span>
-                  ) : (
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        (creditsLeft ?? 0) <= 0
-                          ? 'text-red-600'
-                          : (creditsLeft ?? 0) <= 2
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
-                      )}
-                    >
-                      {creditsLeft} restantes
-                    </span>
-                  )}
-                </dd>
-              </div>
-              {enrollment.planType !== 'unlimited' && (
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-zinc-500">Estado</dt>
+              <dd className={cn('font-semibold', STANDING_TEXT_CLASS[status])}>{STANDING_LABEL[status]}</dd>
+            </div>
+            {standing?.periodId && (
+              <>
                 <div className="flex justify-between">
-                  <dt className="text-zinc-500">Usados este mes</dt>
-                  <dd>{usedCredits} de {enrollment.creditsPerMonth}</dd>
+                  <dt className="text-zinc-500">Plan</dt>
+                  <dd className="font-medium">{standing.planName}</dd>
                 </div>
-              )}
-              <div className="flex justify-between items-center">
-                <dt className="text-zinc-500">Cuota del mes</dt>
-                <dd>
-                  <Badge variant={hasPaid ? 'default' : 'destructive'}>
-                    {hasPaid ? 'Al día' : 'Pendiente'}
-                  </Badge>
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-zinc-400">Sin plan activo. Contactá al gimnasio.</p>
-          )}
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">{status === 'active' ? 'Válido hasta' : 'Venció el'}</dt>
+                  <dd>{formatDay(status === 'active' ? validUntil : standing.endDate)}</dd>
+                </div>
+                {status === 'active' && (
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-500">Créditos</dt>
+                    <dd>
+                      {standing.planType === 'unlimited' ? (
+                        <span className="text-green-600 font-semibold">Acceso ilimitado</span>
+                      ) : (
+                        <span
+                          className={cn(
+                            'font-semibold',
+                            (standing.creditsLeft ?? 0) <= 0
+                              ? 'text-red-600'
+                              : (standing.creditsLeft ?? 0) <= 2
+                                ? 'text-yellow-600'
+                                : 'text-green-600'
+                          )}
+                        >
+                          Te quedan {standing.creditsLeft}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                )}
+                {status !== 'active' && (
+                  <p className="pt-1 text-xs text-zinc-500">Renová tu cuota en el gimnasio para volver a entrenar.</p>
+                )}
+              </>
+            )}
+            {status === 'no_plan' && (
+              <p className="text-sm text-zinc-400">Sin plan activo. Contactá al gimnasio.</p>
+            )}
+          </dl>
         </Card>
       </div>
 
       {/* Payment history */}
-      {recentPayments.length > 0 && (
+      {recentPeriods.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-semibold">Historial de pagos</h2>
+          <h2 className="font-semibold">Mis pagos</h2>
           <div className="rounded-lg border bg-white divide-y text-sm">
-            {recentPayments.map((p) => (
+            {recentPeriods.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{formatARS(p.amountArs)}</p>
+                  <p className="font-medium">{formatARS(p.amountArs)} · {p.planName}</p>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    {formatDate(p.periodStart)} – {formatDate(p.periodEnd)}
+                    {formatDay(p.startDate)} → {formatDay(addDays(p.endDate, -1))}
                   </p>
                 </div>
-                <Badge
-                  className="shrink-0"
-                  variant={
-                    p.status === 'paid'
-                      ? 'default'
-                      : p.status === 'overdue'
-                        ? 'destructive'
-                        : 'secondary'
-                  }
-                >
-                  {p.status === 'paid' ? 'Pagado' : p.status === 'overdue' ? 'Vencido' : 'Pendiente'}
-                </Badge>
+                <span className="shrink-0 text-xs text-zinc-400">Pagó {formatDay(p.paidOn)}</span>
               </div>
             ))}
           </div>

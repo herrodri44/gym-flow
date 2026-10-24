@@ -10,7 +10,7 @@ import { PlanDistributionChart } from './plan-distribution-chart'
 interface AnalyticsData {
   dailyVisits: { label: string; value: number }[]
   heatmap: { weekday: number; hour: number; value: number }[]
-  paymentsTrend: { label: string; collected: number; pending: number }[]
+  paymentsTrend: { label: string; collected: number }[]
   planDistribution: { planName: string; memberCount: number }[]
 }
 
@@ -36,7 +36,7 @@ const TABS = [
     label: 'Tendencia de pagos',
     sublabel: 'Últimos 12 meses',
     description:
-      'Compara mes a mes cuánto se cobró (verde) versus cuánto quedó pendiente (naranja) durante el último año. Permite evaluar la efectividad de la cobranza.',
+      'Cuánto se cobró cada mes durante el último año, según la fecha en que se registró cada pago.',
     tip: '',
   },
   {

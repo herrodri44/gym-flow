@@ -6,7 +6,6 @@ import { membershipPlans } from '@/lib/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { requireGymAdmin } from '@/lib/auth/context'
 import { pesosTocentavos } from '@/lib/utils'
-import { enrollMember } from '@/lib/domain/enrollment'
 
 export async function createPlanAction(formData: FormData) {
   const ctx = await requireGymAdmin()
@@ -103,31 +102,5 @@ export async function archivePlanAction(planId: string) {
     .where(eq(membershipPlans.id, planId))
 
   revalidatePath('/admin/plans')
-  return { success: true }
-}
-
-// ─── Enrollments ──────────────────────────────────────────────────────────────
-
-export async function enrollMemberAction(formData: FormData) {
-  const ctx = await requireGymAdmin()
-  if (!ctx) return { error: 'No autorizado' }
-
-  const memberId = (formData.get('memberId') as string)?.trim()
-  const planId = (formData.get('planId') as string)?.trim()
-  const startedAt = (formData.get('startedAt') as string)?.trim()
-
-  if (!memberId || !planId) return { error: 'Faltan datos requeridos' }
-
-  const result = await enrollMember({
-    gymId: ctx.gymId,
-    memberId,
-    planId,
-    startedAt: startedAt ? new Date(startedAt) : undefined,
-  })
-
-  if ('error' in result) return result
-
-  revalidatePath(`/admin/members/${memberId}`)
-  revalidatePath('/admin/members')
   return { success: true }
 }

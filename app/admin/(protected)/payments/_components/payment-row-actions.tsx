@@ -1,42 +1,27 @@
 'use client'
 
 import { useTransition } from 'react'
-import { updatePaymentStatusAction, deletePaymentAction } from '../actions'
+import { deletePaymentAction } from '../actions'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-interface Props {
-  payment: {
-    id: string
-    status: 'paid' | 'pending' | 'overdue'
-  }
-}
-
-export function PaymentRowActions({ payment }: Props) {
+export function PaymentRowActions({ paymentId, memberId }: { paymentId: string; memberId: string }) {
   const [isPending, startTransition] = useTransition()
 
-  function changeStatus(newStatus: 'paid' | 'pending' | 'overdue') {
-    startTransition(async () => {
-      const fd = new FormData()
-      fd.set('paymentId', payment.id)
-      fd.set('status', newStatus)
-      await updatePaymentStatusAction(fd)
-    })
-  }
-
   function handleDelete() {
-    if (!confirm('¿Eliminar este registro de pago?')) return
+    if (!confirm('¿Eliminar este pago? También se elimina el período que habilitaba.')) return
     startTransition(async () => {
       const fd = new FormData()
-      fd.set('paymentId', payment.id)
-      await deletePaymentAction(fd)
+      fd.set('paymentId', paymentId)
+      fd.set('memberId', memberId)
+      const result = await deletePaymentAction(fd)
+      if ('error' in result) alert(result.error)
     })
   }
 
@@ -44,10 +29,7 @@ export function PaymentRowActions({ payment }: Props) {
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={isPending}
-        className={cn(
-          buttonVariants({ variant: 'ghost', size: 'icon' }),
-          'h-8 w-8'
-        )}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-8 w-8')}
       >
         <span className="sr-only">Acciones</span>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -57,27 +39,8 @@ export function PaymentRowActions({ payment }: Props) {
         </svg>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {payment.status !== 'paid' && (
-          <DropdownMenuItem onClick={() => changeStatus('paid')}>
-            Marcar como pagado
-          </DropdownMenuItem>
-        )}
-        {payment.status !== 'pending' && (
-          <DropdownMenuItem onClick={() => changeStatus('pending')}>
-            Marcar como pendiente
-          </DropdownMenuItem>
-        )}
-        {payment.status !== 'overdue' && (
-          <DropdownMenuItem onClick={() => changeStatus('overdue')}>
-            Marcar como vencido
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-red-600"
-          onClick={handleDelete}
-        >
-          Eliminar
+        <DropdownMenuItem className="text-red-600" onClick={handleDelete}>
+          Eliminar pago
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

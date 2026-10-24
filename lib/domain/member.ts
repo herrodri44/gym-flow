@@ -24,17 +24,9 @@
  */
 
 import { db } from '@/lib/db/client'
-import {
-  gyms,
-  members,
-  enrollments,
-  membershipPlans,
-  visits,
-  creditAdjustments,
-  paymentRecords,
-} from '@/lib/db/schema'
-import { and, count, desc, eq, gte, lte, max, sql, sum } from 'drizzle-orm'
-import { monthStart, monthStartDate } from '@/lib/db/time'
+import { gyms, members, visits } from '@/lib/db/schema'
+import { and, eq, max, sql } from 'drizzle-orm'
+import { getMemberStanding, type MemberStanding } from './standing'
 
 export type MemberPortalData = {
   member: {
@@ -51,25 +43,15 @@ export type MemberPortalData = {
     name: string
     timezone: string
   }
-  enrollment: {
-    planName: string
-    planType: 'credits' | 'unlimited'
-    creditsPerMonth: number | null
-    priceArs: number
-    startedAt: Date
-  } | null
+  standing: MemberStanding | null
   lastVisit: Date | null
-  /** null = unlimited plan; number = credits-based remaining credits this month */
-  creditsLeft: number | null
-  usedCredits: number
-  hasPaid: boolean
-  recentPayments: Array<{
+  recentPeriods: Array<{
     id: string
+    planName: string
+    startDate: string
+    endDate: string
     amountArs: number
-    status: 'paid' | 'pending' | 'overdue'
-    periodStart: Date
-    periodEnd: Date
-    paidAt: Date | null
+    paidOn: string
   }>
 }
 
@@ -79,9 +61,6 @@ export type MemberPortalData = {
  */
 export async function getMemberPortalData(userId: string): Promise<MemberPortalData | null> {
   // Round trip 1: member + gym in one JOIN.
-  // We need gymTimezone to build the month-boundary SQL fragment used by
-  // the visit and adjustment queries below. Fetching it here lets all
-  // remaining queries run in parallel in round trip 2.
   const [row] = await db
     .select({
       memberId: members.id,
@@ -104,109 +83,33 @@ export async function getMemberPortalData(userId: string): Promise<MemberPortalD
 
   const { memberId, gymId, gymTimezone } = row
 
-  const mStart = monthStart(gymTimezone)
-  const mStartDate = monthStartDate(gymTimezone)
+  // Round trip 2: standing, last visit and recent periods in parallel.
+  const [standing, [lastVisitRow], periods] = await Promise.all([
+    getMemberStanding(memberId, gymId),
 
-  // Round trip 2: six independent queries in parallel.
-  const [
-    enrollmentRows,
-    [lastVisitRow],
-    [{ visitCount }],
-    [{ adjustmentSum }],
-    hasPaidRows,
-    payments,
-  ] = await Promise.all([
-    // Active plan details
-    db
-      .select({
-        planName: membershipPlans.name,
-        planType: membershipPlans.planType,
-        creditsPerMonth: membershipPlans.creditsPerMonth,
-        priceArs: membershipPlans.priceArs,
-        startedAt: enrollments.startedAt,
-      })
-      .from(enrollments)
-      .innerJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-      .where(
-        and(
-          eq(enrollments.memberId, memberId),
-          eq(enrollments.gymId, gymId),
-          eq(enrollments.active, true)
-        )
-      )
-      .limit(1),
-
-    // Last visit timestamp (all time)
     db
       .select({ lastVisit: max(visits.visitedAt) })
       .from(visits)
       .where(and(eq(visits.memberId, memberId), eq(visits.gymId, gymId))),
 
-    // Visits used this month (excludes over-limit visits)
-    db
-      .select({ visitCount: count() })
-      .from(visits)
-      .where(
-        and(
-          eq(visits.memberId, memberId),
-          eq(visits.gymId, gymId),
-          eq(visits.overLimit, false),
-          gte(visits.visitedAt, mStart)
-        )
-      ),
-
-    // Credit adjustments this month
-    db
-      .select({ adjustmentSum: sum(creditAdjustments.amount) })
-      .from(creditAdjustments)
-      .where(
-        and(
-          eq(creditAdjustments.memberId, memberId),
-          eq(creditAdjustments.gymId, gymId),
-          gte(creditAdjustments.date, mStartDate)
-        )
-      ),
-
-    // Whether a paid record covers today
-    db
-      .select({ id: paymentRecords.id })
-      .from(paymentRecords)
-      .where(
-        and(
-          eq(paymentRecords.memberId, memberId),
-          eq(paymentRecords.gymId, gymId),
-          eq(paymentRecords.status, 'paid'),
-          lte(paymentRecords.periodStart, sql`now()`),
-          gte(paymentRecords.periodEnd, sql`now()`)
-        )
-      )
-      .limit(1),
-
-    // Recent payment history
-    db
-      .select({
-        id: paymentRecords.id,
-        amountArs: paymentRecords.amountArs,
-        status: paymentRecords.status,
-        periodStart: paymentRecords.periodStart,
-        periodEnd: paymentRecords.periodEnd,
-        paidAt: paymentRecords.paidAt,
-      })
-      .from(paymentRecords)
-      .where(and(eq(paymentRecords.memberId, memberId), eq(paymentRecords.gymId, gymId)))
-      .orderBy(desc(paymentRecords.periodStart))
-      .limit(6),
+    db.execute<{
+      id: string
+      plan_name: string
+      start_date: string
+      end_date: string
+      amount_ars: number
+      paid_on: string
+    }>(sql`
+      SELECT p.id, mp.name AS plan_name, p.start_date::text, p.end_date::text,
+             pr.amount_ars, (pr.paid_at AT TIME ZONE ${gymTimezone})::date::text AS paid_on
+      FROM membership_periods p
+      JOIN membership_plans mp ON mp.id = p.plan_id
+      JOIN payment_records pr ON pr.id = p.payment_id
+      WHERE p.member_id = ${memberId}::uuid AND p.gym_id = ${gymId}::uuid
+      ORDER BY p.start_date DESC
+      LIMIT 6
+    `),
   ])
-
-  const enrollment = enrollmentRows[0] ?? null
-  const usedCredits = Number(visitCount ?? 0)
-  const adjustments = Number(adjustmentSum ?? 0)
-  const isUnlimited = enrollment?.planType === 'unlimited'
-  const creditsLeft = isUnlimited
-    ? null
-    : enrollment
-      ? (enrollment.creditsPerMonth ?? 0) - usedCredits + adjustments
-      : null
 
   return {
     member: {
@@ -223,26 +126,15 @@ export async function getMemberPortalData(userId: string): Promise<MemberPortalD
       name: row.gymName,
       timezone: gymTimezone,
     },
-    enrollment: enrollment
-      ? {
-          planName: enrollment.planName,
-          planType: enrollment.planType,
-          creditsPerMonth: enrollment.creditsPerMonth,
-          priceArs: enrollment.priceArs,
-          startedAt: enrollment.startedAt,
-        }
-      : null,
+    standing,
     lastVisit: lastVisitRow?.lastVisit ?? null,
-    creditsLeft,
-    usedCredits,
-    hasPaid: hasPaidRows.length > 0,
-    recentPayments: payments.map((p) => ({
+    recentPeriods: periods.map((p) => ({
       id: p.id,
-      amountArs: p.amountArs,
-      status: p.status,
-      periodStart: p.periodStart,
-      periodEnd: p.periodEnd,
-      paidAt: p.paidAt,
+      planName: p.plan_name,
+      startDate: p.start_date,
+      endDate: p.end_date,
+      amountArs: Number(p.amount_ars),
+      paidOn: p.paid_on,
     })),
   }
 }

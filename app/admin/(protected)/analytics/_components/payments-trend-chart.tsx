@@ -13,7 +13,7 @@ import {
 import { formatARS } from '@/lib/utils'
 
 interface Props {
-  data: { label: string; collected: number; pending: number }[]
+  data: { label: string; collected: number }[]
 }
 
 function formatK(value: number): string {
@@ -28,7 +28,6 @@ export function PaymentsTrendChart({ data }: Props) {
   const chartData = data.map((d) => ({
     name: d.label,
     Cobrado: d.collected,
-    Pendiente: d.pending,
   }))
 
   return (
@@ -49,7 +48,6 @@ export function PaymentsTrendChart({ data }: Props) {
         />
         <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="Cobrado" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={20} />
-        <Bar dataKey="Pendiente" fill="#f97316" radius={[3, 3, 0, 0]} maxBarSize={20} />
       </BarChart>
     </ResponsiveContainer>
   )

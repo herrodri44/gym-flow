@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { publicFichajeAction } from '../actions'
-import type { FichajeResult } from '@/lib/domain/fichaje'
+import { publicFichajeAction, type PublicFichajeResult } from '../actions'
+import { formatDay } from '@/lib/standing-ui'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
-type Result = FichajeResult | { status: 'invalid_gym' } | null
+type Result = PublicFichajeResult | null
 
 function ResultScreen({
   result,
@@ -31,9 +31,10 @@ function ResultScreen({
       heading = '¡Podés pasar!'
       const creditsLeft = result.creditsLeft
       body =
-        creditsLeft === null
+        (creditsLeft === null
           ? 'Plan libre — acceso ilimitado.'
-          : `Te quedan ${creditsLeft} crédito${creditsLeft === 1 ? '' : 's'} este mes.`
+          : `Te quedan ${creditsLeft} crédito${creditsLeft === 1 ? '' : 's'}.`) +
+        ` Tu cuota vale hasta el ${formatDay(result.validUntil)}.`
       break
     }
     case 'over_limit_allowed': {
@@ -48,10 +49,28 @@ function ResultScreen({
       body = 'Solo se permite un fichaje por día en este gimnasio.'
       break
     }
-    case 'no_active_enrollment': {
+    case 'grace_allowed': {
+      color = 'yellow'
+      heading = '¡Podés pasar!'
+      body = `Tu cuota venció el ${formatDay(result.expiredOn)}. Renovala en la recepción.`
+      break
+    }
+    case 'expired': {
+      color = 'orange'
+      heading = 'Tu cuota está vencida'
+      body = `Venció el ${formatDay(result.expiredOn)}. Renovala en la recepción para seguir entrenando.`
+      break
+    }
+    case 'not_started': {
+      color = 'orange'
+      heading = 'Tu cuota todavía no empezó'
+      body = `Empieza el ${formatDay(result.startsOn)}. Consultá en la recepción.`
+      break
+    }
+    case 'no_plan': {
       color = 'orange'
       heading = 'Sin plan activo'
-      body = 'No tenés una inscripción activa en este gimnasio. Hablá con la recepción.'
+      body = 'No tenés una cuota registrada en este gimnasio. Hablá con la recepción.'
       break
     }
     case 'over_limit_denied': {
@@ -72,11 +91,10 @@ function ResultScreen({
       body = 'El enlace no es válido.'
       break
     }
-    case 'multiple_matches': {
-      // Should not happen with exact DNI search on public endpoint
+    case 'error': {
       color = 'red'
-      heading = 'Error de búsqueda'
-      body = 'Consultá con la recepción.'
+      heading = 'No pudimos registrar tu ingreso'
+      body = 'Intentá de nuevo o consultá con la recepción.'
       break
     }
   }
@@ -88,19 +106,10 @@ function ResultScreen({
     orange: 'bg-orange-400 text-white',
   }
 
-  const memberName =
-    result.status !== 'not_found' &&
-    result.status !== 'invalid_gym' &&
-    result.status !== 'multiple_matches' &&
-    'member' in result
-      ? result.member.fullName
-      : null
-
   return (
     <div className="flex flex-col items-center gap-6 py-2">
       <div className={cn('w-full rounded-2xl p-8 text-center', colorClasses[color])}>
         <p className="text-4xl font-black leading-tight">{heading}</p>
-        {memberName && <p className="mt-3 text-xl font-semibold opacity-90">{memberName}</p>}
         <p className="mt-3 text-sm opacity-80">{body}</p>
       </div>
       <Button variant="outline" className="w-full h-12" onClick={onReset}>

@@ -6,11 +6,17 @@ import { cn, formatARS } from '@/lib/utils'
 import {
   getDashboardContext,
   getKpis,
-  getUnpaidMembers,
+  getFollowUpLists,
+  getStaleMembers,
   getVisitsChartData,
-  type UnpaidMember,
+  EXPIRING_SOON_DAYS,
+  type FollowUpList as FollowUpListData,
+  type FollowUpMember,
 } from '@/lib/domain/dashboard'
+import { RECENT_VISIT_DAYS, STALE_AFTER_DAYS } from '@/lib/domain/activity'
+import { formatDay } from '@/lib/standing-ui'
 import { PaymentBarChart } from './_components/payment-bar-chart'
+import { StaleMembersDialog } from './_components/stale-members-dialog'
 import { VisitsAreaChart } from './_components/visits-area-chart'
 
 export default async function DashboardPage() {
@@ -19,13 +25,16 @@ export default async function DashboardPage() {
 
   const { gymName, gymTimezone, lowCreditsThreshold } = await getDashboardContext(gymId)
 
-  const [kpis, unpaidMembers, visitsChart] = await Promise.all([
+  const [kpis, followUp, staleMembers, visitsChart] = await Promise.all([
     getKpis(gymId, gymTimezone, lowCreditsThreshold),
-    getUnpaidMembers(gymId, gymTimezone),
+    getFollowUpLists(gymId),
+    getStaleMembers(gymId),
     getVisitsChartData(gymId, gymTimezone),
   ])
 
-  const totalUnpaid = unpaidMembers.visiting.length + unpaidMembers.absent.length
+  const hasFollowUp =
+    followUp.lapsedComing.total + followUp.expiringSoon.total + followUp.outOfCredits.total > 0
+  const hasCleanup = followUp.lapsedAway.total + staleMembers.length > 0
   const today = new Date().toLocaleDateString('es-AR', {
     weekday: 'long',
     day: 'numeric',
@@ -41,28 +50,81 @@ export default async function DashboardPage() {
         <p className="text-sm text-[#335C81] mt-2">Resumen operativo diario</p>
       </div>
 
-      {/* Unpaid alerts — priority */}
-      {totalUnpaid > 0 && (
-        <div className="mb-7 rounded-2xl border-l-4 border-red-500 bg-red-50 px-5 py-4">
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-red-600 mb-4">
-            Atención requerida — {totalUnpaid} socios sin pago
+      {kpis.graceVisitsToday > 0 && (
+        <Link
+          href="/admin/members?payment=grace"
+          className="mb-5 flex items-center justify-between gap-3 rounded-2xl border-l-4 border-amber-500 bg-amber-50 px-5 py-3 transition-opacity hover:opacity-80"
+        >
+          <p className="text-sm text-amber-900">
+            <span className="font-bold">
+              Hoy {kpis.graceVisitsToday === 1 ? 'ingresó 1 socio' : `ingresaron ${kpis.graceVisitsToday} socios`} con
+              la cuota vencida
+            </span>{' '}
+            (en gracia). Registrá su pago antes de que se les corte el acceso.
           </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {unpaidMembers.visiting.length > 0 && (
-              <UnpaidList
-                title="Viniendo sin pagar"
-                members={unpaidMembers.visiting}
-                showVisits
-                accent="orange"
-              />
-            )}
-            {unpaidMembers.absent.length > 0 && (
-              <UnpaidList
-                title="Ausentes sin pagar"
-                members={unpaidMembers.absent}
-                showVisits={false}
-                accent="red"
-              />
+          <span className="shrink-0 text-xs font-semibold text-amber-800">Ver →</span>
+        </Link>
+      )}
+
+      {/* Follow-up — act today */}
+      {hasFollowUp && (
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <FollowUpList
+            title="Vencidos que siguen viniendo"
+            hint="Cobrales o registrá el pago si ya pagaron"
+            list={followUp.lapsedComing}
+            viewAllHref="/admin/members?payment=lapsed&seen=recent"
+            accent="red"
+            detail={(m) =>
+              `${m.inGrace ? 'en gracia · ' : ''}venció hace ${m.daysSinceExpiry} d · ${lastVisitText(m)}`
+            }
+          />
+          <FollowUpList
+            title={`Vencen en ${EXPIRING_SOON_DAYS} días`}
+            hint="Recordales antes de que venza"
+            list={followUp.expiringSoon}
+            accent="amber"
+            detail={(m) =>
+              `${formatDay(m.validUntil)}` + (m.creditsLeft !== null ? ` · ${m.creditsLeft} créd.` : '')
+            }
+          />
+          <FollowUpList
+            title="Sin créditos antes de vencer"
+            hint="Candidatos a un plan más grande"
+            list={followUp.outOfCredits}
+            accent="blue"
+            detail={(m) => `vence ${formatDay(m.validUntil)}`}
+          />
+        </div>
+      )}
+
+      {/* Follow-up — win back or clean up */}
+      {hasCleanup && (
+        <div className="mb-7 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <FollowUpList
+              title={`Vencidos sin venir (+${RECENT_VISIT_DAYS} d)`}
+              hint="Ofreceles volver; si no van a volver, dalos de baja"
+              list={followUp.lapsedAway}
+              viewAllHref="/admin/members?payment=lapsed&seen=away"
+              accent="zinc"
+              detail={(m) => `venció hace ${m.daysSinceExpiry} d · ${lastVisitText(m)}`}
+            />
+          </div>
+          <div className="flex flex-col justify-between gap-3 rounded-2xl border border-[#C8D8E8] bg-white px-5 py-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-[#274060]">
+                Sin actividad hace +{STALE_AFTER_DAYS} días
+              </p>
+              <p className="mt-2 text-3xl font-extrabold tabular-nums text-[#1B2845]">{staleMembers.length}</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Figuran como activos pero no pagan ni vienen. Inflan los totales del panel.
+              </p>
+            </div>
+            {staleMembers.length > 0 && (
+              <div>
+                <StaleMembersDialog members={staleMembers} />
+              </div>
             )}
           </div>
         </div>
@@ -85,9 +147,10 @@ export default async function DashboardPage() {
           <StatItem label="Recaudado" value={formatARS(kpis.collectedThisMonth)} color="green" />
           <Divider />
           <StatItem
-            label="Por cobrar"
-            value={formatARS(kpis.pendingAmountThisMonth)}
-            color={kpis.pendingAmountThisMonth > 0 ? 'red' : 'green'}
+            label="Vencidos"
+            value={String(kpis.lapsed)}
+            sub={kpis.noPlan > 0 ? `+${kpis.noPlan} sin plan` : undefined}
+            color={kpis.lapsed > 0 ? 'red' : 'green'}
           />
           <Divider />
           <StatItem
@@ -103,10 +166,10 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-[#335C81] mb-2">
-            Pagos — mes actual
+            Cuota vigente — socios activos
           </p>
           <div className="rounded-2xl border border-[#C8D8E8] bg-card p-4 shadow-sm">
-            <PaymentBarChart paid={kpis.paidThisMonth} unpaid={kpis.unpaidThisMonth} />
+            <PaymentBarChart paid={kpis.upToDate} unpaid={kpis.lapsed + kpis.noPlan} />
           </div>
         </div>
         <div>
@@ -152,49 +215,72 @@ function StatItem({
   )
 }
 
+function lastVisitText(m: FollowUpMember) {
+  if (m.daysSinceLastVisit === null) return 'nunca vino'
+  if (m.daysSinceLastVisit === 0) return 'vino hoy'
+  return `vino hace ${m.daysSinceLastVisit} d`
+}
+
 function Divider() {
   return <div className="hidden sm:block w-px bg-[#C8D8E8] mx-1 self-stretch" />
 }
 
-function UnpaidList({
+const ACCENTS = {
+  red: { box: 'border-red-500 bg-red-50', dot: 'bg-red-500', title: 'text-red-700' },
+  amber: { box: 'border-amber-500 bg-amber-50', dot: 'bg-amber-500', title: 'text-amber-700' },
+  blue: { box: 'border-[#335C81] bg-[#EEF2F7]', dot: 'bg-[#335C81]', title: 'text-[#274060]' },
+  zinc: { box: 'border-zinc-400 bg-zinc-50', dot: 'bg-zinc-400', title: 'text-zinc-700' },
+} as const
+
+function FollowUpList({
   title,
-  members,
-  showVisits,
+  hint,
+  list,
+  viewAllHref,
   accent,
+  detail,
 }: {
   title: string
-  members: UnpaidMember[]
-  showVisits: boolean
-  accent: 'red' | 'orange'
+  hint: string
+  list: FollowUpListData
+  viewAllHref?: string
+  accent: keyof typeof ACCENTS
+  detail: (m: FollowUpMember) => string
 }) {
-  const dotClass = accent === 'red' ? 'bg-red-500' : 'bg-orange-500'
-  const titleClass = accent === 'red' ? 'text-red-700' : 'text-orange-700'
-
+  const a = ACCENTS[accent]
+  const { members, total } = list
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-3">
-        <span className={cn('h-2 w-2 rounded-full shrink-0', dotClass)} />
-        <p className={cn('text-xs font-bold uppercase tracking-wide', titleClass)}>{title}</p>
+    <div className={cn('h-full rounded-2xl border-l-4 px-5 py-4', a.box)}>
+      <div className="mb-1 flex items-center gap-2">
+        <span className={cn('h-2 w-2 shrink-0 rounded-full', a.dot)} />
+        <p className={cn('text-xs font-bold uppercase tracking-wide', a.title)}>
+          {title}
+          {total > 0 && <span className="ml-1.5 tabular-nums">({total})</span>}
+        </p>
+        {viewAllHref && total > members.length && (
+          <Link href={viewAllHref} className={cn('ml-auto shrink-0 text-xs font-semibold hover:underline', a.title)}>
+            Ver todos →
+          </Link>
+        )}
       </div>
-      <ul className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
-        {members.map((m) => (
-          <li key={m.id}>
-            <Link
-              href={`/admin/members/${m.id}`}
-              className="flex items-center justify-between py-1.5 hover:opacity-70 transition-opacity"
-            >
-              <span className="text-sm font-medium text-[#1B2845]">{m.fullName}</span>
-              <span className="text-xs text-zinc-500 tabular-nums">
-                {showVisits && m.visitsThisMonth > 0
-                  ? `${m.visitsThisMonth} vis.`
-                  : m.lastVisit
-                    ? m.lastVisit.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
-                    : '—'}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <p className="mb-3 text-xs text-zinc-500">{hint}</p>
+      {members.length === 0 ? (
+        <p className="py-1.5 text-sm text-zinc-400">Nadie por ahora</p>
+      ) : (
+        <ul className="max-h-48 space-y-0.5 overflow-y-auto pr-1">
+          {members.map((m) => (
+            <li key={m.id}>
+              <Link
+                href={`/admin/members/${m.id}`}
+                className="flex items-center justify-between gap-3 py-1.5 transition-opacity hover:opacity-70"
+              >
+                <span className="truncate text-sm font-medium text-[#1B2845]">{m.fullName}</span>
+                <span className="shrink-0 text-xs tabular-nums text-zinc-500">{detail(m)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

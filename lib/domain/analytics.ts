@@ -17,7 +17,6 @@ export interface HeatmapCell {
 export interface PaymentTrendPoint {
   label: string   // 'MMM YY'
   collected: number
-  pending: number
 }
 
 const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -51,7 +50,7 @@ export async function getAnalyticsData(gymId: string): Promise<AnalyticsData> {
   const [dailyVisits, heatmap, paymentsTrend, planDistribution] = await Promise.all([
     getDailyVisits(gymId, gymTimezone),
     getHeatmapData(gymId, gymTimezone),
-    getPaymentsTrend(gymId),
+    getPaymentsTrend(gymId, gymTimezone),
     getPlanDistribution(gymId),
   ])
 
@@ -103,24 +102,23 @@ export async function getHeatmapData(gymId: string, gymTimezone: string): Promis
   }))
 }
 
-// Payments trend: collected vs pending per month for the last 12 months
-export async function getPaymentsTrend(gymId: string): Promise<PaymentTrendPoint[]> {
-  const rows = await db.execute<{ month_key: string; collected: string; pending: string }>(sql`
+// Payments trend: money collected per month (by payment date, gym timezone), last 12 months
+export async function getPaymentsTrend(gymId: string, gymTimezone: string): Promise<PaymentTrendPoint[]> {
+  const rows = await db.execute<{ month_key: string; collected: string }>(sql`
     WITH months AS (
       SELECT generate_series(
-        date_trunc('month', now()) - interval '11 months',
-        date_trunc('month', now()),
+        date_trunc('month', now() AT TIME ZONE ${gymTimezone}) - interval '11 months',
+        date_trunc('month', now() AT TIME ZONE ${gymTimezone}),
         interval '1 month'
       )::date AS month_start
     )
     SELECT
       to_char(m.month_start, 'YYYY-MM') AS month_key,
-      COALESCE(SUM(pr.amount_ars) FILTER (WHERE pr.status = 'paid'), 0)::bigint            AS collected,
-      COALESCE(SUM(pr.amount_ars) FILTER (WHERE pr.status IN ('pending', 'overdue')), 0)::bigint AS pending
+      COALESCE(SUM(pr.amount_ars), 0)::bigint AS collected
     FROM months m
     LEFT JOIN payment_records pr ON pr.gym_id = ${gymId}::uuid
-      AND pr.period_start >= m.month_start
-      AND pr.period_start < (m.month_start + interval '1 month')::date
+      AND (pr.paid_at AT TIME ZONE ${gymTimezone})::date >= m.month_start
+      AND (pr.paid_at AT TIME ZONE ${gymTimezone})::date < (m.month_start + interval '1 month')::date
     GROUP BY m.month_start
     ORDER BY m.month_start ASC
   `)
@@ -128,46 +126,18 @@ export async function getPaymentsTrend(gymId: string): Promise<PaymentTrendPoint
   return rows.map((r) => ({
     label: toMonthLabel(r.month_key),
     collected: Number(r.collected),
-    pending: Number(r.pending),
   }))
 }
 
-// Distribution of active members across plans; members without an active enrollment → "Sin plan"
+// Active members by the plan of their current period; members without one → "Sin cuota vigente"
 export async function getPlanDistribution(gymId: string): Promise<PlanDistributionPoint[]> {
   const rows = await db.execute<{ plan_name: string; member_count: number }>(sql`
-    WITH active_members AS (
-      SELECT id FROM members WHERE gym_id = ${gymId}::uuid AND active = true
-    ),
-    enrolled AS (
-      SELECT e.member_id, e.plan_id
-      FROM enrollments e
-      JOIN active_members am ON am.id = e.member_id
-      WHERE e.gym_id = ${gymId}::uuid AND e.active = true
-    ),
-    plan_counts AS (
-      SELECT
-        mp.name AS plan_name,
-        COUNT(en.member_id)::int AS member_count
-      FROM membership_plans mp
-      LEFT JOIN enrolled en ON en.plan_id = mp.id
-      WHERE mp.gym_id = ${gymId}::uuid AND mp.active = true
-      GROUP BY mp.id, mp.name
-    ),
-    no_plan AS (
-      SELECT
-        'Sin plan' AS plan_name,
-        COUNT(am.id)::int AS member_count
-      FROM active_members am
-      WHERE NOT EXISTS (
-        SELECT 1 FROM enrolled en WHERE en.member_id = am.id
-      )
-    )
-    SELECT plan_name, member_count
-    FROM (
-      SELECT plan_name, member_count FROM plan_counts
-      UNION ALL
-      SELECT plan_name, member_count FROM no_plan WHERE member_count > 0
-    ) combined
+    SELECT
+      CASE WHEN s.status = 'active' THEN s.plan_name ELSE 'Sin cuota vigente' END AS plan_name,
+      COUNT(*)::int AS member_count
+    FROM member_standing s
+    WHERE s.gym_id = ${gymId}::uuid AND s.member_active
+    GROUP BY 1
     ORDER BY member_count DESC, plan_name ASC
   `)
 

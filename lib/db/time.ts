@@ -17,3 +17,4 @@ export function monthStartDate(tz: string) {
 export function dayStart(tz: string) {
   return sql`(date_trunc('day', now() AT TIME ZONE ${tz}) AT TIME ZONE ${tz})`
 }
+

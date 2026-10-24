@@ -15,3 +15,8 @@ export function formatARS(centavos: number): string {
 export function pesosTocentavos(pesos: number): number {
   return Math.round(pesos * 100)
 }
+
+// Converts integer centavos to whole pesos for prefilling form inputs
+export function centavosToPesos(centavos: number): number {
+  return Math.round(centavos / 100)
+}

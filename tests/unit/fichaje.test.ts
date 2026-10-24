@@ -1,161 +1,97 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { makeSelectChain } from '../helpers/db-mock'
+import { describe, it, expect } from 'vitest'
+import { decideFichaje } from '@/lib/domain/fichaje'
 
-const mockSelect = vi.fn()
+// decideFichaje is the pure check-in rule set (PROJECT.md §5). The SQL side —
+// member_standing, credit counting, one visit per day — is covered by
+// tests/integration/billing.test.ts against a real Postgres.
 
-vi.mock('@/lib/db/client', () => ({
-  db: { select: mockSelect },
-}))
+const MEMBER = { id: 'member-1', fullName: 'Ana López', documentNumber: '12345678' }
 
-// Mock credits module so validateMemberFichaje tests control credit results directly
-const mockGetAvailableCredits = vi.fn()
-vi.mock('@/lib/domain/credits', () => ({
-  getAvailableCredits: mockGetAvailableCredits,
-}))
+type Standing = Parameters<typeof decideFichaje>[1]
 
-const { validateFichaje, validateMemberFichaje } = await import('@/lib/domain/fichaje')
-
-const GYM_ID = 'gym-1'
-const TIMEZONE = 'America/Argentina/Buenos_Aires'
-
-const MEMBER = {
-  id: 'member-1',
-  fullName: 'Juan Pérez',
-  documentNumber: '12345678',
+const ACTIVE_CREDITS: Standing = {
+  status: 'active',
+  periodId: 'period-1',
+  planType: 'credits',
+  startDate: '2026-10-05',
+  endDate: '2026-11-05',
+  creditsLeft: 4,
+  allowOverLimit: false,
+  graceDaysLeft: null,
 }
 
-beforeEach(() => {
-  mockSelect.mockReset()
-  mockGetAvailableCredits.mockReset()
-})
+const standing = (overrides: Partial<Standing>): Standing => ({ ...ACTIVE_CREDITS, ...overrides })
 
-// ─── validateFichaje ──────────────────────────────────────────────────────────
-
-describe('validateFichaje', () => {
-  it('returns not_found for an empty query', async () => {
-    const result = await validateFichaje('  ', GYM_ID, TIMEZONE, 'fichaje_public')
-    expect(result).toEqual({ status: 'not_found' })
+describe('decideFichaje', () => {
+  it('already checked in today wins over everything else, no visit', () => {
+    expect(decideFichaje(MEMBER, ACTIVE_CREDITS, true)).toEqual({
+      result: { status: 'already_today', member: MEMBER },
+      visit: null,
+    })
   })
 
-  it('returns not_found when no member matches (public channel)', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-
-    const result = await validateFichaje('99999999', GYM_ID, TIMEZONE, 'fichaje_public')
-
-    expect(result).toEqual({ status: 'not_found' })
+  it('active with credits: ok, shows the last valid day, visit consumes the period', () => {
+    expect(decideFichaje(MEMBER, ACTIVE_CREDITS, false)).toEqual({
+      result: { status: 'ok', member: MEMBER, creditsLeft: 4, validUntil: '2026-11-04' },
+      visit: { periodId: 'period-1', overLimit: false },
+    })
   })
 
-  it('returns not_found when no member matches (admin channel)', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-
-    const result = await validateFichaje('nobody', GYM_ID, TIMEZONE, 'fichaje_admin')
-
-    expect(result).toEqual({ status: 'not_found' })
+  it('unlimited plan: ok with creditsLeft null regardless of the count', () => {
+    const d = decideFichaje(MEMBER, standing({ planType: 'unlimited', creditsLeft: null }), false)
+    expect(d.result).toMatchObject({ status: 'ok', creditsLeft: null })
+    expect(d.visit).toEqual({ periodId: 'period-1', overLimit: false })
   })
 
-  it('returns multiple_matches when admin search finds more than one member', async () => {
-    const members = [
-      { id: 'member-1', fullName: 'Juan Pérez', documentNumber: '11111111' },
-      { id: 'member-2', fullName: 'Juan García', documentNumber: '22222222' },
-    ]
-    mockSelect.mockReturnValueOnce(makeSelectChain(members))
-
-    // Downstream queries for validateMemberFichaje are not reached
-    const result = await validateFichaje('Juan', GYM_ID, TIMEZONE, 'fichaje_admin')
-
-    expect(result).toEqual({ status: 'multiple_matches', members })
+  it('out of credits and the gym denies: over_limit_denied, no visit', () => {
+    const d = decideFichaje(MEMBER, standing({ creditsLeft: 0 }), false)
+    expect(d.result).toEqual({ status: 'over_limit_denied', member: MEMBER, validUntil: '2026-11-04' })
+    expect(d.visit).toBeNull()
   })
 
-  it('delegates to validateMemberFichaje when exactly one member matches', async () => {
-    // Member found — then: no visit today, credits available
-    mockSelect
-      .mockReturnValueOnce(makeSelectChain([MEMBER])) // member search
-      .mockReturnValueOnce(makeSelectChain([]))        // no visit today
-    mockGetAvailableCredits.mockResolvedValueOnce(5)
-
-    const result = await validateFichaje(MEMBER.documentNumber, GYM_ID, TIMEZONE, 'fichaje_public')
-
-    expect(result).toEqual({ status: 'ok', member: MEMBER, creditsLeft: 5 })
-  })
-})
-
-// ─── validateMemberFichaje ────────────────────────────────────────────────────
-
-describe('validateMemberFichaje', () => {
-  it('returns already_today when the member already visited today', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([{ id: 'visit-1' }]))
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'already_today', member: MEMBER })
+  it('negative balance (adjustments) is also out of credits', () => {
+    expect(decideFichaje(MEMBER, standing({ creditsLeft: -1 }), false).result.status).toBe('over_limit_denied')
   })
 
-  it('returns no_active_enrollment when getAvailableCredits returns null', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-    mockGetAvailableCredits.mockResolvedValueOnce(null)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'no_active_enrollment', member: MEMBER })
+  it('out of credits and the gym allows it: over_limit_allowed, visit flagged over limit', () => {
+    const d = decideFichaje(MEMBER, standing({ creditsLeft: 0, allowOverLimit: true }), false)
+    expect(d.result.status).toBe('over_limit_allowed')
+    expect(d.visit).toEqual({ periodId: 'period-1', overLimit: true })
   })
 
-  it('returns ok with creditsLeft: null for unlimited plans', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-    mockGetAvailableCredits.mockResolvedValueOnce(Infinity)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'ok', member: MEMBER, creditsLeft: null })
+  it('grace: allowed with a warning, visit has no period yet (next payment attaches it)', () => {
+    const d = decideFichaje(
+      MEMBER,
+      standing({ status: 'grace', graceDaysLeft: 2, endDate: '2026-11-05' }),
+      false,
+    )
+    expect(d.result).toEqual({ status: 'grace_allowed', member: MEMBER, expiredOn: '2026-11-05', graceDaysLeft: 2 })
+    expect(d.visit).toEqual({ periodId: null, overLimit: false })
   })
 
-  it('returns ok with remaining credits when member has credits', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-    mockGetAvailableCredits.mockResolvedValueOnce(4)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'ok', member: MEMBER, creditsLeft: 4 })
+  it('grace ignores allow_over_limit and credits: the old period is over', () => {
+    const d = decideFichaje(
+      MEMBER,
+      standing({ status: 'grace', graceDaysLeft: 2, creditsLeft: 0 }),
+      false,
+    )
+    expect(d.result.status).toBe('grace_allowed')
   })
 
-  it('returns over_limit_allowed when credits are 0 and gym allows over-limit', async () => {
-    mockSelect
-      .mockReturnValueOnce(makeSelectChain([]))                          // no visit today
-      .mockReturnValueOnce(makeSelectChain([{ allowOverLimit: true }]))  // gym settings
-    mockGetAvailableCredits.mockResolvedValueOnce(0)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'over_limit_allowed', member: MEMBER })
+  it('expired: denied with the expiry date', () => {
+    expect(decideFichaje(MEMBER, standing({ status: 'expired' }), false)).toEqual({
+      result: { status: 'expired', member: MEMBER, expiredOn: '2026-11-05' },
+      visit: null,
+    })
   })
 
-  it('returns over_limit_denied when credits are 0 and gym denies over-limit', async () => {
-    mockSelect
-      .mockReturnValueOnce(makeSelectChain([]))                           // no visit today
-      .mockReturnValueOnce(makeSelectChain([{ allowOverLimit: false }]))  // gym settings
-    mockGetAvailableCredits.mockResolvedValueOnce(0)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'over_limit_denied', member: MEMBER })
+  it('never paid: no_plan', () => {
+    const d = decideFichaje(MEMBER, standing({ status: 'no_plan', periodId: null, endDate: null }), false)
+    expect(d).toEqual({ result: { status: 'no_plan', member: MEMBER }, visit: null })
   })
 
-  it('returns over_limit_denied when credits are 0 and gymSettings row is missing', async () => {
-    mockSelect
-      .mockReturnValueOnce(makeSelectChain([]))  // no visit today
-      .mockReturnValueOnce(makeSelectChain([]))  // no gymSettings row
-    mockGetAvailableCredits.mockResolvedValueOnce(0)
-
-    const result = await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(result).toEqual({ status: 'over_limit_denied', member: MEMBER })
-  })
-
-  it('passes gymId and gymTimezone to getAvailableCredits', async () => {
-    mockSelect.mockReturnValueOnce(makeSelectChain([]))
-    mockGetAvailableCredits.mockResolvedValueOnce(3)
-
-    await validateMemberFichaje(MEMBER, GYM_ID, TIMEZONE)
-
-    expect(mockGetAvailableCredits).toHaveBeenCalledWith(MEMBER.id, GYM_ID, TIMEZONE)
+  it('period starts in the future: not_started with the start date', () => {
+    const d = decideFichaje(MEMBER, standing({ status: 'not_started', startDate: '2026-12-01' }), false)
+    expect(d).toEqual({ result: { status: 'not_started', member: MEMBER, startsOn: '2026-12-01' }, visit: null })
   })
 })

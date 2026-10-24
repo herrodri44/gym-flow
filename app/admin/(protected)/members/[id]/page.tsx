@@ -10,8 +10,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { CreditAdjustmentForm } from './_components/credit-adjustment-form'
-import { EnrollMemberDialog } from './_components/enroll-member-dialog'
 import { MemberNotesForm } from './_components/member-notes-form'
+import { RegisterPaymentDialog } from '../../payments/_components/register-payment-dialog'
+import { PaymentRowActions } from '../../payments/_components/payment-row-actions'
+import { addDays } from '@/lib/domain/period-math'
+import { STANDING_LABEL, STANDING_TEXT_CLASS, formatDay } from '@/lib/standing-ui'
 
 function formatDate(value: string | Date | null | undefined) {
   if (!value) return '—'
@@ -52,19 +55,10 @@ export default async function MemberDetailPage({
   const data = await getMemberDetail(id, gymId)
   if (!data) notFound()
 
-  const {
-    member,
-    enrollment,
-    activePlans,
-    creditsLeft,
-    usedCreditsThisMonth,
-    recentVisits,
-    lastPayments,
-    recentAdjustments,
-  } = data
-
-
-  const isUnlimited = enrollment?.planType === 'unlimited'
+  const { member, standing, paymentOption, plans, periods, recentVisits, recentAdjustments } = data
+  const hasPeriod = !!standing?.periodId
+  const isUnlimited = standing?.planType === 'unlimited'
+  const status = standing?.status ?? 'no_plan'
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -107,61 +101,90 @@ export default async function MemberDetailPage({
         </Card>
 
         <Card className="p-6 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2 className="font-semibold text-sm text-zinc-500 uppercase tracking-wide">Membresía</h2>
-            <EnrollMemberDialog
-              memberId={member.id}
-              plans={activePlans}
-              hasActiveEnrollment={!!enrollment}
-            />
+            {paymentOption && standing && (
+              <RegisterPaymentDialog
+                members={[paymentOption]}
+                fixedMember={paymentOption}
+                plans={plans}
+                today={standing.today}
+                triggerLabel={hasPeriod ? 'Renovar' : 'Registrar pago'}
+                triggerVariant={status === 'active' ? 'outline' : 'default'}
+                triggerSize="sm"
+              />
+            )}
           </div>
-          {enrollment ? (
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Plan</dt>
-                <dd className="font-medium">{enrollment.planName}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Tipo</dt>
-                <dd>{isUnlimited ? 'Libre (ilimitado)' : 'Por créditos'}</dd>
-              </div>
-              {!isUnlimited && (
-                <>
+          <dl className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-zinc-500">Estado</dt>
+              <dd className={cn('font-semibold', STANDING_TEXT_CLASS[status])}>{STANDING_LABEL[status]}</dd>
+            </div>
+            {standing && hasPeriod && (
+              <>
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">Plan</dt>
+                  <dd className="font-medium">{standing.planName}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">Período</dt>
+                  <dd>
+                    {formatDay(standing.startDate)} → {formatDay(addDays(standing.endDate!, -1))}
+                  </dd>
+                </div>
+                {status === 'active' && (
                   <div className="flex justify-between">
-                    <dt className="text-zinc-500">Créditos este mes</dt>
+                    <dt className="text-zinc-500">Vence en</dt>
+                    <dd>{standing.daysLeft} {standing.daysLeft === 1 ? 'día' : 'días'}</dd>
+                  </div>
+                )}
+                {(status === 'grace' || status === 'expired') && (
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-500">Venció</dt>
+                    <dd className="text-red-600">
+                      el {formatDay(standing.endDate)} (hace {standing.daysSinceExpiry} d)
+                    </dd>
+                  </div>
+                )}
+                {isUnlimited ? (
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-500">Créditos</dt>
+                    <dd className="text-green-600 font-semibold">Acceso ilimitado</dd>
+                  </div>
+                ) : (
+                  <div className="flex justify-between">
+                    <dt className="text-zinc-500">
+                      {status === 'active' ? 'Créditos disponibles' : 'Créditos que sobraron'}
+                    </dt>
                     <dd
                       className={cn(
                         'font-semibold',
-                        (creditsLeft ?? 0) <= 0
-                          ? 'text-red-600'
-                          : (creditsLeft ?? 0) <= 2
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
+                        status !== 'active'
+                          ? 'text-zinc-500'
+                          : (standing.creditsLeft ?? 0) <= 0
+                            ? 'text-red-600'
+                            : (standing.creditsLeft ?? 0) <= 2
+                              ? 'text-yellow-600'
+                              : 'text-green-600'
                       )}
                     >
-                      {creditsLeft} restantes
+                      {standing.creditsLeft} de {(standing.creditsGranted ?? 0) + standing.creditsAdjusted}
                     </dd>
                   </div>
-                  <div className="flex justify-between">
-                    <dt className="text-zinc-500">Usados este mes</dt>
-                    <dd>{usedCreditsThisMonth} de {enrollment.creditsPerMonth}</dd>
-                  </div>
-                </>
-              )}
-              {isUnlimited && (
-                <div className="flex justify-between">
-                  <dt className="text-zinc-500">Créditos</dt>
-                  <dd className="text-green-600 font-semibold">Acceso ilimitado</dd>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Desde</dt>
-                <dd>{formatDateTime(enrollment.startedAt)}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-zinc-400">Sin plan activo</p>
-          )}
+                )}
+                {standing.graceVisits > 0 && (
+                  <p className="text-xs text-amber-700">
+                    {standing.graceVisits} {standing.graceVisits === 1 ? 'ingreso' : 'ingresos'} en gracia: se
+                    descuentan del próximo período.
+                  </p>
+                )}
+                {standing.hasUpcoming && (
+                  <p className="text-xs text-sky-700">Ya renovó: el próximo período empieza al terminar este.</p>
+                )}
+              </>
+            )}
+            {status === 'no_plan' && <p className="text-sm text-zinc-400">Todavía no registró pagos.</p>}
+          </dl>
         </Card>
       </div>
 
@@ -171,27 +194,25 @@ export default async function MemberDetailPage({
         <MemberNotesForm memberId={member.id} notes={member.notes} />
       </Card>
 
-      {/* Last payments */}
-      {lastPayments.length > 0 && (
+      {/* Periods / payments */}
+      {periods.length > 0 && (
         <div className="space-y-3">
-          <h2 className="font-semibold">Historial de pagos</h2>
+          <h2 className="font-semibold">Pagos y períodos</h2>
           <div className="rounded-lg border bg-white divide-y text-sm">
-            {lastPayments.map((p) => (
+            {periods.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{formatARS(p.amountArs)}</p>
+                  <p className="font-medium">
+                    {formatDay(p.startDate)} → {formatDay(addDays(p.endDate, -1))}
+                    <span className="ml-2 font-normal text-zinc-500">{p.planName}</span>
+                  </p>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    {formatDate(p.periodStart)} – {formatDate(p.periodEnd)}
+                    {formatARS(p.amountArs)} · pagó {formatDay(p.paidOn)}
+                    {p.planType === 'credits' && ` · usó ${p.creditsUsed} de ${p.creditsGranted}`}
+                    {p.notes && ` · ${p.notes}`}
                   </p>
                 </div>
-                <Badge
-                  className="shrink-0"
-                  variant={
-                    p.status === 'paid' ? 'default' : p.status === 'overdue' ? 'destructive' : 'secondary'
-                  }
-                >
-                  {p.status === 'paid' ? 'Pagado' : p.status === 'overdue' ? 'Vencido' : 'Pendiente'}
-                </Badge>
+                <PaymentRowActions paymentId={p.paymentId} memberId={member.id} />
               </div>
             ))}
           </div>
@@ -212,6 +233,9 @@ export default async function MemberDetailPage({
                   <span className="text-zinc-400">{channelLabel[v.channel] ?? v.channel}</span>
                   {v.overLimit && (
                     <Badge variant="destructive">Sin créditos</Badge>
+                  )}
+                  {v.unassigned && (
+                    <Badge variant="secondary">Sin período</Badge>
                   )}
                 </div>
               </div>

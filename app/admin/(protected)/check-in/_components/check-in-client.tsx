@@ -5,8 +5,10 @@ import {
   searchFichajeAction,
   validateMemberFichajeAction,
   registerFichajeAction,
+  type RegisteredResult,
 } from '../actions'
-import type { FichajeResult, MemberSummary } from '@/lib/domain/fichaje'
+import type { FichajeResult, MemberFichajeResult, MemberSummary } from '@/lib/domain/fichaje'
+import { formatDay } from '@/lib/standing-ui'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -17,7 +19,13 @@ type Phase =
   | { name: 'idle' }
   | { name: 'validated'; result: FichajeResult | ErrorResult }
   | { name: 'multiple'; members: MemberSummary[] }
-  | { name: 'registered'; wasOverLimit: boolean; memberName: string; creditsLeft: number | null }
+  | ({ name: 'registered' } & Omit<RegisteredResult, 'status'>)
+
+type ConfirmableResult = Extract<MemberFichajeResult, { status: 'ok' | 'over_limit_allowed' | 'grace_allowed' }>
+
+function isConfirmable(r: FichajeResult | ErrorResult): r is ConfirmableResult {
+  return r.status === 'ok' || r.status === 'over_limit_allowed' || r.status === 'grace_allowed'
+}
 
 const STEPS = ['Buscar', 'Confirmar', 'Resultado']
 
@@ -68,15 +76,18 @@ function ConfirmCard({
   onRegister,
   onReset,
 }: {
-  result:
-    | { status: 'ok'; member: { id: string; fullName: string; documentNumber: string }; creditsLeft: number | null }
-    | { status: 'over_limit_allowed'; member: { id: string; fullName: string; documentNumber: string } }
+  result: ConfirmableResult
   isPending: boolean
   onRegister: (id: string) => void
   onReset: () => void
 }) {
-  const isWarn = result.status === 'over_limit_allowed'
-  const creditsLeft = result.status === 'ok' ? result.creditsLeft : null
+  const isWarn = result.status !== 'ok'
+  const title =
+    result.status === 'ok'
+      ? '✓ Puede ingresar'
+      : result.status === 'over_limit_allowed'
+        ? '⚠ Sin créditos — ingreso permitido'
+        : '⚠ Cuota vencida — en período de gracia'
 
   return (
     <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
@@ -86,9 +97,7 @@ function ConfirmCard({
           isWarn ? 'border-amber-100 bg-amber-50' : 'border-emerald-100 bg-emerald-50'
         )}
       >
-        <div className={cn('text-2xl font-bold', isWarn ? 'text-amber-800' : 'text-emerald-800')}>
-          {isWarn ? '⚠ Sin créditos — ingreso permitido' : '✓ Puede ingresar'}
-        </div>
+        <div className={cn('text-2xl font-bold', isWarn ? 'text-amber-800' : 'text-emerald-800')}>{title}</div>
         <div className="mt-1 text-sm text-zinc-600">Revisá los datos antes de confirmar</div>
       </div>
 
@@ -96,16 +105,33 @@ function ConfirmCard({
         <div className="rounded-xl bg-zinc-50 px-4 py-3 space-y-2.5">
           <InfoRow label="Nombre" value={result.member.fullName} bold />
           <InfoRow label="Documento" value={result.member.documentNumber} />
-          {creditsLeft !== null ? (
-            <InfoRow
-              label="Créditos disponibles"
-              value={String(creditsLeft)}
-              valueClass={creditsLeft <= 0 ? 'text-red-600 font-bold' : 'text-emerald-700 font-bold'}
-            />
+          {result.status === 'ok' &&
+            (result.creditsLeft !== null ? (
+              <InfoRow
+                label="Créditos disponibles"
+                value={String(result.creditsLeft)}
+                valueClass={result.creditsLeft <= 1 ? 'text-amber-600 font-bold' : 'text-emerald-700 font-bold'}
+              />
+            ) : (
+              <InfoRow label="Plan" value="Libre ∞" valueClass="text-emerald-700 font-medium" />
+            ))}
+          {result.status !== 'grace_allowed' ? (
+            <InfoRow label="Válido hasta" value={formatDay(result.validUntil)} />
           ) : (
-            <InfoRow label="Plan" value="Libre ∞" valueClass="text-emerald-700 font-medium" />
+            <>
+              <InfoRow label="Venció el" value={formatDay(result.expiredOn)} valueClass="text-red-600 font-medium" />
+              <InfoRow
+                label="Gracia restante"
+                value={`${result.graceDaysLeft} ${result.graceDaysLeft === 1 ? 'día' : 'días'}`}
+              />
+            </>
           )}
         </div>
+        {result.status === 'grace_allowed' && (
+          <p className="text-sm text-amber-700">
+            Recordale que tiene que renovar. Este ingreso se descuenta del próximo período.
+          </p>
+        )}
         <div className="flex flex-col-reverse gap-3 sm:grid sm:grid-cols-2">
           <Button variant="outline" onClick={onReset} disabled={isPending}>
             Cancelar
@@ -142,11 +168,30 @@ function InfoRow({
   )
 }
 
+function errorSub(result: FichajeResult | ErrorResult): string | undefined {
+  switch (result.status) {
+    case 'error':
+      return result.message
+    case 'expired':
+      return `${result.member.fullName} · venció el ${formatDay(result.expiredOn)}. Tiene que renovar.`
+    case 'not_started':
+      return `${result.member.fullName} · su período empieza el ${formatDay(result.startsOn)}.`
+    case 'over_limit_denied':
+      return `${result.member.fullName} · sin créditos hasta el ${formatDay(result.validUntil)}.`
+    case 'no_plan':
+      return `${result.member.fullName} · todavía no registró ningún pago.`
+    case 'already_today':
+      return result.member.fullName
+    default:
+      return undefined
+  }
+}
+
 function ErrorCard({
   result,
   onReset,
 }: {
-  result: { status: string; message?: string; member?: { fullName: string } }
+  result: FichajeResult | ErrorResult
   onReset: () => void
 }) {
   const cfg: Record<string, { border: string; bg: string; iconColor: string; icon: string; title: string; sub?: string }> = {
@@ -162,19 +207,27 @@ function ErrorCard({
       border: 'border-amber-200', bg: 'bg-amber-50', iconColor: 'text-amber-400',
       icon: '↺', title: 'Ya fichó hoy',
     },
-    no_active_enrollment: {
+    no_plan: {
       border: 'border-orange-200', bg: 'bg-orange-50', iconColor: 'text-orange-400',
-      icon: '—', title: 'Sin plan activo',
+      icon: '—', title: 'Sin plan',
+    },
+    expired: {
+      border: 'border-red-200', bg: 'bg-red-50', iconColor: 'text-red-400',
+      icon: '✗', title: 'Cuota vencida',
+    },
+    not_started: {
+      border: 'border-sky-200', bg: 'bg-sky-50', iconColor: 'text-sky-400',
+      icon: '…', title: 'Período sin empezar',
     },
     over_limit_denied: {
       border: 'border-red-200', bg: 'bg-red-50', iconColor: 'text-red-400',
-      icon: '✗', title: 'No puede pasar', sub: 'Sin créditos disponibles',
+      icon: '✗', title: 'No puede pasar — sin créditos',
     },
   }
 
   const c = cfg[result.status]
   if (!c) return null
-  const sub = c.sub ?? result.message ?? result.member?.fullName
+  const sub = c.sub ?? errorSub(result)
 
   return (
     <div className={cn('rounded-2xl border p-8 text-center shadow-sm space-y-3', c.border, c.bg)}>
@@ -222,9 +275,15 @@ export function CheckInClient() {
     startTransition(async () => {
       const result = await registerFichajeAction(memberId)
       if (result.status === 'registered') {
-        setPhase({ name: 'registered', ...result })
+        setPhase({
+          name: 'registered',
+          outcome: result.outcome,
+          memberName: result.memberName,
+          creditsLeft: result.creditsLeft,
+          validUntil: result.validUntil,
+        })
       } else {
-        setPhase({ name: 'validated', result: result as FichajeResult | ErrorResult })
+        setPhase({ name: 'validated', result })
       }
     })
   }
@@ -232,8 +291,7 @@ export function CheckInClient() {
   const currentStep: 0 | 1 | 2 =
     phase.name === 'idle' || phase.name === 'multiple'
       ? 0
-      : phase.name === 'validated' &&
-          (phase.result.status === 'ok' || phase.result.status === 'over_limit_allowed')
+      : phase.name === 'validated' && isConfirmable(phase.result)
         ? 1
         : 2
 
@@ -304,14 +362,9 @@ export function CheckInClient() {
       )}
 
       {/* Step 1: confirmation (ok / over_limit_allowed) */}
-      {phase.name === 'validated' &&
-        (phase.result.status === 'ok' || phase.result.status === 'over_limit_allowed') && (
+      {phase.name === 'validated' && isConfirmable(phase.result) && (
           <ConfirmCard
-            result={
-              phase.result as
-                | { status: 'ok'; member: { id: string; fullName: string; documentNumber: string }; creditsLeft: number | null }
-                | { status: 'over_limit_allowed'; member: { id: string; fullName: string; documentNumber: string } }
-            }
+            result={phase.result}
             isPending={isPending}
             onRegister={handleRegister}
             onReset={reset}
@@ -323,30 +376,34 @@ export function CheckInClient() {
         <div
           className={cn(
             'rounded-2xl border p-8 text-center shadow-sm space-y-3',
-            phase.wasOverLimit ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
+            (phase.outcome !== 'ok') ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
           )}
         >
           <div
             className={cn(
               'text-7xl font-black',
-              phase.wasOverLimit ? 'text-amber-400' : 'text-emerald-400'
+              (phase.outcome !== 'ok') ? 'text-amber-400' : 'text-emerald-400'
             )}
           >
-            {phase.wasOverLimit ? '⚠' : '✓'}
+            {(phase.outcome !== 'ok') ? '⚠' : '✓'}
           </div>
           <div
             className={cn(
               'text-2xl font-bold',
-              phase.wasOverLimit ? 'text-amber-900' : 'text-emerald-900'
+              (phase.outcome !== 'ok') ? 'text-amber-900' : 'text-emerald-900'
             )}
           >
-            {phase.wasOverLimit ? 'Ingresó con advertencia' : '¡Ingresó con éxito!'}
+            {(phase.outcome !== 'ok') ? 'Ingresó con advertencia' : '¡Ingresó con éxito!'}
           </div>
           <div className="text-lg text-zinc-700">{phase.memberName}</div>
           {phase.creditsLeft !== null && (
             <div className="text-sm text-zinc-500">
-              {Math.max(0, phase.creditsLeft - 1)} crédito{phase.creditsLeft - 1 === 1 ? '' : 's'} restante{phase.creditsLeft - 1 === 1 ? '' : 's'}
+              {Math.max(0, phase.creditsLeft)} crédito{phase.creditsLeft === 1 ? '' : 's'} restante{phase.creditsLeft === 1 ? '' : 's'}
+              {phase.validUntil && ` · válido hasta ${formatDay(phase.validUntil)}`}
             </div>
+          )}
+          {phase.outcome === 'grace_allowed' && (
+            <div className="text-sm text-amber-800">Cuota vencida: recordale que renueve.</div>
           )}
           <Button className="mt-4 w-full h-12 text-base" onClick={reset}>
             Nuevo fichaje
@@ -355,8 +412,7 @@ export function CheckInClient() {
       )}
 
       {/* Step 2b: error / denial outcomes */}
-      {phase.name === 'validated' &&
-        !['ok', 'over_limit_allowed'].includes(phase.result.status) && (
+      {phase.name === 'validated' && !isConfirmable(phase.result) && (
           <ErrorCard result={phase.result} onReset={reset} />
         )}
     </div>

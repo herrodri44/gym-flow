@@ -89,7 +89,7 @@ export default async function SettingsPage() {
         <OperationalSettingsForm
           allowOverLimit={settings?.allowOverLimit ?? false}
           lowCreditsThreshold={settings?.lowCreditsThreshold ?? 2}
-          autoGeneratePayments={settings?.autoGeneratePayments ?? true}
+          graceDays={settings?.graceDays ?? 0}
         />
       </section>
 

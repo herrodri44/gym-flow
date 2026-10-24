@@ -1,14 +1,22 @@
 import { db } from '@/lib/db/client'
-import { gyms, members, enrollments, membershipPlans, visits, paymentRecords } from '@/lib/db/schema'
-import { and, asc, count, eq, exists, gte, ilike, inArray, lte, max, or, sql } from 'drizzle-orm'
-import { monthStart } from '@/lib/db/time'
+import { members, memberStanding, visits, type MemberStandingStatus } from '@/lib/db/schema'
+import { and, asc, count, eq, exists, gt, ilike, inArray, max, not, or, sql } from 'drizzle-orm'
+import { addDays } from './period-math'
+import { RECENT_VISIT_DAYS } from './activity'
 
 export const MEMBERS_PAGE_SIZE = 25
+
+// 'lapsed' = grace or expired (what the dashboard calls "Vencidos").
+const standingFilters = ['active', 'grace', 'expired', 'lapsed', 'no_plan'] as const
+const seenFilters = ['recent', 'away'] as const
 
 export type MembersListFilters = {
   q: string
   status: 'active' | 'inactive' | 'all'
-  payment: 'all' | 'paid' | 'pending' | 'overdue'
+  /** Membership standing filter ("Cuota" in the UI). */
+  payment: 'all' | (typeof standingFilters)[number]
+  /** Attendance: visited in the last RECENT_VISIT_DAYS ('recent') or not ('away'). */
+  seen: 'all' | (typeof seenFilters)[number]
   page: number
 }
 
@@ -22,16 +30,15 @@ export type MemberRow = {
   joinedAt: string | null
   active: boolean
   notes: string | null
-  enrollment: {
-    planName: string
-    planType: 'credits' | 'unlimited'
-    creditsPerMonth: number | null
-  } | null
-  usedCredits: number
-  /** null = unlimited plan or no plan */
-  availableCredits: number | null
+  standing: MemberStandingStatus
+  planName: string | null
+  planType: 'credits' | 'unlimited' | null
+  /** null = unlimited plan or no period */
+  creditsLeft: number | null
+  /** Last valid day of the reference period */
+  validUntil: string | null
+  daysSinceExpiry: number | null
   lastVisit: Date | null
-  hasPaid: boolean
 }
 
 export type MembersListData = {
@@ -40,58 +47,55 @@ export type MembersListData = {
   totalPages: number
 }
 
-const validPaymentStatuses = ['paid', 'pending', 'overdue'] as const
-type PaymentStatus = (typeof validPaymentStatuses)[number]
+export function parseStandingFilter(value: string | undefined): MembersListFilters['payment'] {
+  return standingFilters.includes(value as (typeof standingFilters)[number])
+    ? (value as MembersListFilters['payment'])
+    : 'all'
+}
+
+export function parseSeenFilter(value: string | undefined): MembersListFilters['seen'] {
+  return seenFilters.includes(value as (typeof seenFilters)[number])
+    ? (value as MembersListFilters['seen'])
+    : 'all'
+}
 
 export async function getMembersList(
   gymId: string,
-  filters: MembersListFilters
+  filters: MembersListFilters,
 ): Promise<MembersListData> {
-  const { q, status, payment, page } = filters
+  const { q, status, payment, seen, page } = filters
 
-  const searchFilter = q
-    ? or(ilike(members.fullName, `%${q}%`), ilike(members.documentNumber, `%${q}%`))
-    : undefined
-
-  const statusFilter =
-    status === 'inactive'
-      ? eq(members.active, false)
-      : status === 'all'
-        ? undefined
-        : eq(members.active, true)
-
-  const paymentFilter = validPaymentStatuses.includes(payment as PaymentStatus)
-    ? exists(
-        db
-          .select({ x: sql`1` })
-          .from(paymentRecords)
-          .where(
-            and(
-              eq(paymentRecords.memberId, members.id),
-              eq(paymentRecords.gymId, gymId),
-              eq(paymentRecords.status, payment as PaymentStatus),
-              lte(paymentRecords.periodStart, sql`now()`),
-              gte(paymentRecords.periodEnd, sql`now()`)
-            )
-          )
-      )
-    : undefined
-
-  const baseWhere = and(eq(members.gymId, gymId), statusFilter, searchFilter, paymentFilter)
-
-  // Round trip 1: gym timezone, total count, and member rows all run in parallel.
-  // baseWhere does not depend on gymTimezone, so all three can fire at once.
-  const [[gymRow], [{ total }], memberRows] = await Promise.all([
+  const visitedRecently = exists(
     db
-      .select({ timezone: gyms.timezone })
-      .from(gyms)
-      .where(eq(gyms.id, gymId))
-      .limit(1),
+      .select({ one: visits.id })
+      .from(visits)
+      .where(
+        and(
+          eq(visits.memberId, members.id),
+          gt(visits.visitDate, sql`${memberStanding.today} - ${RECENT_VISIT_DAYS}::int`),
+        ),
+      ),
+  )
 
+  const where = and(
+    eq(members.gymId, gymId),
+    status === 'inactive' ? eq(members.active, false) : status === 'all' ? undefined : eq(members.active, true),
+    q ? or(ilike(members.fullName, `%${q}%`), ilike(members.documentNumber, `%${q}%`)) : undefined,
+    payment === 'lapsed'
+      ? inArray(memberStanding.status, ['grace', 'expired'])
+      : payment !== 'all'
+        ? eq(memberStanding.status, payment)
+        : undefined,
+    seen === 'recent' ? visitedRecently : seen === 'away' ? not(visitedRecently) : undefined,
+  )
+
+  // Round trip 1: total count and the page of members with their standing.
+  const [[{ total }], memberRows] = await Promise.all([
     db
       .select({ total: count() })
       .from(members)
-      .where(baseWhere),
+      .innerJoin(memberStanding, eq(memberStanding.memberId, members.id))
+      .where(where),
 
     db
       .select({
@@ -104,97 +108,38 @@ export async function getMembersList(
         joinedAt: members.joinedAt,
         active: members.active,
         notes: members.notes,
+        standing: memberStanding.status,
+        planName: memberStanding.planName,
+        planType: memberStanding.planType,
+        creditsLeft: memberStanding.creditsLeft,
+        endDate: memberStanding.endDate,
+        daysSinceExpiry: memberStanding.daysSinceExpiry,
       })
       .from(members)
-      .where(baseWhere)
+      .innerJoin(memberStanding, eq(memberStanding.memberId, members.id))
+      .where(where)
       .orderBy(asc(members.fullName))
       .limit(MEMBERS_PAGE_SIZE)
       .offset((page - 1) * MEMBERS_PAGE_SIZE),
   ])
 
-  const gymTimezone = gymRow?.timezone ?? 'America/Argentina/Buenos_Aires'
+  // Round trip 2: last visit for the members on this page.
   const memberIds = memberRows.map((r) => r.id)
-
-  // Round trip 2: four enrichment queries in parallel, keyed by memberId.
-  // Skipped entirely when the page returns no results.
-  const [enrollmentRows, visitCountRows, lastVisitRows, paidMemberRows] =
+  const lastVisitRows =
     memberIds.length > 0
-      ? await Promise.all([
-          db
-            .select({
-              memberId: enrollments.memberId,
-              planName: membershipPlans.name,
-              planType: membershipPlans.planType,
-              creditsPerMonth: membershipPlans.creditsPerMonth,
-            })
-            .from(enrollments)
-            .innerJoin(membershipPlans, eq(membershipPlans.id, enrollments.planId))
-            .where(
-              and(
-                inArray(enrollments.memberId, memberIds),
-                eq(enrollments.gymId, gymId),
-                eq(enrollments.active, true)
-              )
-            ),
-
-          db
-            .select({ memberId: visits.memberId, n: count() })
-            .from(visits)
-            .where(
-              and(
-                inArray(visits.memberId, memberIds),
-                eq(visits.gymId, gymId),
-                eq(visits.overLimit, false),
-                gte(
-                  visits.visitedAt,
-                  monthStart(gymTimezone)
-                )
-              )
-            )
-            .groupBy(visits.memberId),
-
-          db
-            .select({ memberId: visits.memberId, lastVisit: max(visits.visitedAt) })
-            .from(visits)
-            .where(and(inArray(visits.memberId, memberIds), eq(visits.gymId, gymId)))
-            .groupBy(visits.memberId),
-
-          db
-            .selectDistinct({ memberId: paymentRecords.memberId })
-            .from(paymentRecords)
-            .where(
-              and(
-                inArray(paymentRecords.memberId, memberIds),
-                eq(paymentRecords.gymId, gymId),
-                eq(paymentRecords.status, 'paid'),
-                lte(paymentRecords.periodStart, sql`now()`),
-                gte(paymentRecords.periodEnd, sql`now()`)
-              )
-            ),
-        ])
-      : [[], [], [], []]
-
-  const enrollMap = new Map(enrollmentRows.map((e) => [e.memberId, e]))
-  const visitMap = new Map(visitCountRows.map((v) => [v.memberId, Number(v.n)]))
+      ? await db
+          .select({ memberId: visits.memberId, lastVisit: max(visits.visitedAt) })
+          .from(visits)
+          .where(and(inArray(visits.memberId, memberIds), eq(visits.gymId, gymId)))
+          .groupBy(visits.memberId)
+      : []
   const lastVisitMap = new Map(lastVisitRows.map((v) => [v.memberId, v.lastVisit]))
-  const paidSet = new Set(paidMemberRows.map((r) => r.memberId))
 
-  const rows: MemberRow[] = memberRows.map((m) => {
-    const enrollment = enrollMap.get(m.id) ?? null
-    const usedCredits = visitMap.get(m.id) ?? 0
-    const isUnlimited = enrollment?.planType === 'unlimited'
-    const availableCredits =
-      enrollment && !isUnlimited ? (enrollment.creditsPerMonth ?? 0) - usedCredits : null
-
-    return {
-      ...m,
-      enrollment,
-      usedCredits,
-      availableCredits,
-      lastVisit: lastVisitMap.get(m.id) ?? null,
-      hasPaid: paidSet.has(m.id),
-    }
-  })
+  const rows: MemberRow[] = memberRows.map(({ endDate, ...m }) => ({
+    ...m,
+    validUntil: endDate ? addDays(endDate, -1) : null,
+    lastVisit: lastVisitMap.get(m.id) ?? null,
+  }))
 
   return {
     rows,

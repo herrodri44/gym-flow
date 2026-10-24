@@ -90,7 +90,11 @@ export async function updateOperationalSettingsAction(formData: FormData) {
   if (!ctx) return { error: 'No autorizado' }
 
   const allowOverLimit = formData.get('allowOverLimit') === 'on'
-  const autoGeneratePayments = formData.get('autoGeneratePayments') === 'on'
+  const graceDaysRaw = parseInt(formData.get('graceDays') as string, 10)
+  if (isNaN(graceDaysRaw) || graceDaysRaw < 0 || graceDaysRaw > 31) {
+    return { error: 'Los días de gracia deben ser un número entre 0 y 31' }
+  }
+  const graceDays = graceDaysRaw
   const lowCreditsThresholdRaw = parseInt(
     formData.get('lowCreditsThreshold') as string,
     10,
@@ -103,10 +107,11 @@ export async function updateOperationalSettingsAction(formData: FormData) {
   try {
     await db
       .update(gymSettings)
-      .set({ allowOverLimit, autoGeneratePayments, lowCreditsThreshold, updatedAt: new Date() })
+      .set({ allowOverLimit, graceDays, lowCreditsThreshold, updatedAt: new Date() })
       .where(eq(gymSettings.gymId, ctx.gymId))
 
     revalidatePath('/admin/settings')
+    revalidatePath('/admin/dashboard')
     return { success: true }
   } catch {
     return { error: 'Error al guardar la configuración operativa' }

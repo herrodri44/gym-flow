@@ -1,37 +1,68 @@
 import { db } from '@/lib/db/client'
-import { gyms, gymSettings } from '@/lib/db/schema'
-import { eq, sql } from 'drizzle-orm'
-import { monthStart, monthStartDate } from '@/lib/db/time'
+import { gyms, gymSettings, members } from '@/lib/db/schema'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { monthStart } from '@/lib/db/time'
+import { addDays } from './period-math'
+import { RECENT_VISIT_DAYS, STALE_AFTER_DAYS } from './activity'
 
 export interface KpiData {
   activeMembers: number
   inactiveMembers: number
   visitedLast7Days: number
   visitedThisMonth: number
-  paidThisMonth: number
-  unpaidThisMonth: number
-  collectedThisMonth: number   // centavos ARS
-  pendingAmountThisMonth: number // centavos ARS
+  collectedThisMonth: number // centavos ARS, by payment date (gym-local month)
+  upToDate: number // active members with a current period
+  lapsed: number // active members whose period ended (grace + expired)
+  noPlan: number // active members who never paid
   zeroCredits: number
   lowCredits: number
   lowCreditsThreshold: number
+  /** Visits today by members in grace (period expired, not yet renewed) */
+  graceVisitsToday: number
 }
 
-// Member who hasn't paid this month — split by whether they visited this month or not
-export interface UnpaidMember {
+// A member the gym should contact. Members who already renewed early are excluded.
+export interface FollowUpMember {
   id: string
   fullName: string
-  documentNumber: string
   planName: string | null
-  availableCredits: number | null // null = unlimited plan
-  lastVisit: Date | null          // last visit ever for absent; last this month for visiting
-  visitsThisMonth: number
+  /** Last valid day of the period */
+  validUntil: string | null
+  daysLeft: number | null
+  daysSinceExpiry: number | null
+  creditsLeft: number | null
+  inGrace: boolean
+  /** Gym-local date of the last visit */
+  lastVisit: string | null
+  daysSinceLastVisit: number | null
 }
 
-export interface UnpaidMembersData {
-  visiting: UnpaidMember[]  // unpaid + at least 1 visit this month
-  absent: UnpaidMember[]    // unpaid + no visit this month
+export interface FollowUpList {
+  members: FollowUpMember[]
+  /** Total matching members; `members` is capped at FOLLOW_UP_LIMIT */
+  total: number
 }
+
+export interface FollowUpLists {
+  /** Lapsed (grace or expired) and visited in the last RECENT_VISIT_DAYS: chase today. */
+  lapsedComing: FollowUpList
+  /** Lapsed and not seen for RECENT_VISIT_DAYS: offer a renewal or deactivate. */
+  lapsedAway: FollowUpList
+  expiringSoon: FollowUpList
+  outOfCredits: FollowUpList
+}
+
+// Active members with no activity for STALE_AFTER_DAYS who aren't paying.
+export interface StaleMember {
+  id: string
+  fullName: string
+  status: 'expired' | 'no_plan'
+  /** Latest of last visit and last valid day of the last period; join date if neither exists */
+  lastActivity: string
+}
+
+export const EXPIRING_SOON_DAYS = 7
+const FOLLOW_UP_LIMIT = 10
 
 export interface ChartPoint {
   label: string
@@ -70,261 +101,189 @@ function toMonthLabel(yyyyMm: string): string {
   return `${MONTHS_ES[Number(month) - 1]} ${year.slice(2)}`
 }
 
-// Shared CTE fragment used in both unpaid queries
-function unpaidBaseSql(gymId: string, gymTimezone: string) {
-  return sql`
-    month_ts AS (
-      SELECT
-        ${monthStart(gymTimezone)} AS start_ts,
-        ${monthStartDate(gymTimezone)} AS start_date
-    ),
-    unpaid_enrolled AS (
-      SELECT DISTINCT ON (e.member_id)
-        e.member_id,
-        mp.name        AS plan_name,
-        mp.plan_type,
-        mp.credits_per_month
-      FROM enrollments e
-      JOIN members m  ON m.id = e.member_id AND m.active = true
-      JOIN membership_plans mp ON mp.id = e.plan_id
-      WHERE e.gym_id = ${gymId}::uuid AND e.active = true
-        AND e.member_id NOT IN (
-          SELECT DISTINCT member_id
-          FROM payment_records
-          WHERE gym_id = ${gymId}::uuid
-            AND status = 'paid'
-            AND period_start <= now()
-            AND period_end   >= now()
-        )
-      ORDER BY e.member_id, e.started_at DESC
-    ),
-    credits_calc AS (
-      SELECT
-        ue.member_id,
-        CASE WHEN ue.plan_type = 'credits' THEN
-          ue.credits_per_month
-          - COALESCE(
-              (SELECT COUNT(*)::int FROM visits v
-               WHERE v.member_id = ue.member_id AND v.gym_id = ${gymId}::uuid
-               AND v.over_limit = false
-               AND v.visited_at >= (SELECT start_ts FROM month_ts)),
-              0
-            )
-          + COALESCE(
-              (SELECT SUM(ca.amount)::int FROM credit_adjustments ca
-               WHERE ca.member_id = ue.member_id AND ca.gym_id = ${gymId}::uuid
-               AND ca.date >= (SELECT start_date FROM month_ts)),
-              0
-            )
-        ELSE NULL END AS available_credits
-      FROM unpaid_enrolled ue
-    )
-  `
-}
-
 export async function getKpis(
   gymId: string,
   gymTimezone: string,
   lowCreditsThreshold: number,
 ): Promise<KpiData> {
-  const [memberCounts, visitStats, paymentStats, creditsStats] = await Promise.all([
-    db.execute<{ active_count: number; inactive_count: number }>(sql`
+  const [[standing], [visitStats], [collected]] = await Promise.all([
+    db.execute<Record<string, number>>(sql`
       SELECT
-        COUNT(*) FILTER (WHERE active = true)::int  AS active_count,
-        COUNT(*) FILTER (WHERE active = false)::int AS inactive_count
-      FROM members
+        count(*) FILTER (WHERE member_active)::int                                        AS active_count,
+        count(*) FILTER (WHERE NOT member_active)::int                                    AS inactive_count,
+        count(*) FILTER (WHERE member_active AND status = 'active')::int                  AS up_to_date,
+        count(*) FILTER (WHERE member_active AND status IN ('grace', 'expired'))::int     AS lapsed,
+        count(*) FILTER (WHERE member_active AND status = 'no_plan')::int                 AS no_plan,
+        count(*) FILTER (WHERE member_active AND status = 'active' AND plan_type = 'credits'
+                           AND credits_left <= 0)::int                                    AS zero_credits,
+        count(*) FILTER (WHERE member_active AND status = 'active' AND plan_type = 'credits'
+                           AND credits_left > 0 AND credits_left <= ${lowCreditsThreshold})::int AS low_credits
+      FROM member_standing
       WHERE gym_id = ${gymId}::uuid
     `),
 
-    db.execute<{ visited_7d: number; visited_month: number }>(sql`
+    db.execute<{ visited_7d: number; visited_month: number; grace_today: number }>(sql`
       SELECT
-        COUNT(DISTINCT member_id) FILTER (
-          WHERE visited_at >= now() - interval '7 days'
+        count(DISTINCT member_id) FILTER (
+          WHERE visit_date > (now() AT TIME ZONE ${gymTimezone})::date - 7
         )::int AS visited_7d,
-        COUNT(DISTINCT member_id) FILTER (
-          WHERE visited_at >= ${monthStart(gymTimezone)}
-        )::int AS visited_month
+        count(DISTINCT member_id) FILTER (
+          WHERE visit_date >= date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date
+        )::int AS visited_month,
+        -- Grace visits have no period until the member pays (recordPayment attaches them).
+        count(*) FILTER (
+          WHERE visit_date = (now() AT TIME ZONE ${gymTimezone})::date AND period_id IS NULL
+        )::int AS grace_today
       FROM visits
       WHERE gym_id = ${gymId}::uuid
-        AND visited_at >= LEAST(
-          now() - interval '7 days',
-          ${monthStart(gymTimezone)}
+        AND visit_date >= LEAST(
+          (now() AT TIME ZONE ${gymTimezone})::date - 7,
+          date_trunc('month', now() AT TIME ZONE ${gymTimezone})::date
         )
     `),
 
-    db.execute<{ paid: number; total_enrolled: number; collected: string; pending_amt: string }>(sql`
-      WITH active_enrolled AS (
-        SELECT DISTINCT e.member_id
-        FROM enrollments e
-        JOIN members m ON m.id = e.member_id
-        WHERE e.gym_id = ${gymId}::uuid AND e.active = true AND m.active = true
-      ),
-      paid_members AS (
-        SELECT DISTINCT member_id
-        FROM payment_records
-        WHERE gym_id = ${gymId}::uuid
-          AND status = 'paid'
-          AND period_start <= now()
-          AND period_end   >= now()
-      ),
-      amounts AS (
-        SELECT
-          COALESCE(SUM(amount_ars) FILTER (WHERE status = 'paid'
-            AND period_start <= now() AND period_end >= now()), 0)::bigint AS collected,
-          COALESCE(SUM(amount_ars) FILTER (WHERE status IN ('pending', 'overdue')
-            AND period_start <= now() AND period_end >= now()), 0)::bigint AS pending_amt
-        FROM payment_records
-        WHERE gym_id = ${gymId}::uuid
-      )
-      SELECT
-        COUNT(ae.member_id) FILTER (WHERE pm.member_id IS NOT NULL)::int AS paid,
-        COUNT(ae.member_id)::int AS total_enrolled,
-        (SELECT collected  FROM amounts) AS collected,
-        (SELECT pending_amt FROM amounts) AS pending_amt
-      FROM active_enrolled ae
-      LEFT JOIN paid_members pm ON pm.member_id = ae.member_id
-    `),
-
-    db.execute<{ zero_credits: number; low_credits: number }>(sql`
-      WITH member_credits AS (
-        SELECT (
-          mp.credits_per_month
-          - COALESCE(
-              (SELECT COUNT(*)::int FROM visits v
-               WHERE v.member_id = m.id AND v.gym_id = ${gymId}::uuid
-               AND v.over_limit = false
-               AND v.visited_at >= ${monthStart(gymTimezone)}),
-              0
-            )
-          + COALESCE(
-              (SELECT SUM(ca.amount)::int FROM credit_adjustments ca
-               WHERE ca.member_id = m.id AND ca.gym_id = ${gymId}::uuid
-               AND ca.date >= ${monthStartDate(gymTimezone)}),
-              0
-            )
-        ) AS available_credits
-        FROM members m
-        JOIN enrollments e  ON e.member_id = m.id AND e.gym_id = ${gymId}::uuid AND e.active = true
-        JOIN membership_plans mp ON mp.id = e.plan_id AND mp.plan_type = 'credits'
-        WHERE m.gym_id = ${gymId}::uuid AND m.active = true
-      )
-      SELECT
-        COALESCE(COUNT(*) FILTER (WHERE available_credits <= 0), 0)::int                                               AS zero_credits,
-        COALESCE(COUNT(*) FILTER (WHERE available_credits > 0 AND available_credits <= ${lowCreditsThreshold}), 0)::int AS low_credits
-      FROM member_credits
+    db.execute<{ total: string }>(sql`
+      SELECT COALESCE(sum(amount_ars), 0)::bigint AS total
+      FROM payment_records
+      WHERE gym_id = ${gymId}::uuid
+        AND paid_at >= ${monthStart(gymTimezone)}
     `),
   ])
 
-  const mc = memberCounts[0]
-  const vs = visitStats[0]
-  const ps = paymentStats[0]
-  const cs = creditsStats[0]
-
   return {
-    activeMembers:    Number(mc?.active_count   ?? 0),
-    inactiveMembers:  Number(mc?.inactive_count  ?? 0),
-    visitedLast7Days:  Number(vs?.visited_7d     ?? 0),
-    visitedThisMonth:  Number(vs?.visited_month  ?? 0),
-    paidThisMonth:          Number(ps?.paid           ?? 0),
-    unpaidThisMonth:        Number(ps?.total_enrolled ?? 0) - Number(ps?.paid ?? 0),
-    collectedThisMonth:     Number(ps?.collected      ?? 0),
-    pendingAmountThisMonth: Number(ps?.pending_amt    ?? 0),
-    zeroCredits:      Number(cs?.zero_credits    ?? 0),
-    lowCredits:       Number(cs?.low_credits     ?? 0),
+    activeMembers: Number(standing?.active_count ?? 0),
+    inactiveMembers: Number(standing?.inactive_count ?? 0),
+    visitedLast7Days: Number(visitStats?.visited_7d ?? 0),
+    visitedThisMonth: Number(visitStats?.visited_month ?? 0),
+    collectedThisMonth: Number(collected?.total ?? 0),
+    upToDate: Number(standing?.up_to_date ?? 0),
+    lapsed: Number(standing?.lapsed ?? 0),
+    noPlan: Number(standing?.no_plan ?? 0),
+    zeroCredits: Number(standing?.zero_credits ?? 0),
+    lowCredits: Number(standing?.low_credits ?? 0),
     lowCreditsThreshold,
+    graceVisitsToday: Number(visitStats?.grace_today ?? 0),
   }
 }
 
-type UnpaidRow = {
+type FollowUpRow = {
   id: string
   full_name: string
-  document_number: string
   plan_name: string | null
-  available_credits: number | null
-  visits_this_month: number
-  last_visit: Date | null
+  end_date: string | null
+  days_left: number | null
+  days_since_expiry: number | null
+  credits_left: number | null
+  status: string
+  last_visit: string | null
+  days_since_last_visit: number | null
+  total: number
 }
 
-function toUnpaidMember(r: UnpaidRow): UnpaidMember {
+const toNum = (v: number | null) => (v === null ? null : Number(v))
+
+function toFollowUp(r: FollowUpRow): FollowUpMember {
   return {
     id: r.id,
     fullName: r.full_name,
-    documentNumber: r.document_number,
     planName: r.plan_name,
-    availableCredits: r.available_credits !== null ? Number(r.available_credits) : null,
-    visitsThisMonth: Number(r.visits_this_month),
-    lastVisit: r.last_visit ? new Date(r.last_visit) : null,
+    validUntil: r.end_date ? addDays(r.end_date, -1) : null,
+    daysLeft: toNum(r.days_left),
+    daysSinceExpiry: toNum(r.days_since_expiry),
+    creditsLeft: toNum(r.credits_left),
+    inGrace: r.status === 'grace',
+    lastVisit: r.last_visit,
+    daysSinceLastVisit: toNum(r.days_since_last_visit),
   }
 }
 
-export async function getUnpaidMembers(
-  gymId: string,
-  gymTimezone: string,
-): Promise<UnpaidMembersData> {
-  const base = unpaidBaseSql(gymId, gymTimezone)
+function toList(rows: FollowUpRow[]): FollowUpList {
+  return { members: rows.map(toFollowUp), total: Number(rows[0]?.total ?? 0) }
+}
 
-  const [visitingRows, absentRows] = await Promise.all([
-    // Unpaid members who visited at least once this month
-    db.execute<UnpaidRow>(sql`
-      WITH ${base},
-      month_visits AS (
-        SELECT member_id, COUNT(*)::int AS cnt, MAX(visited_at) AS last_visit
-        FROM visits
-        WHERE gym_id = ${gymId}::uuid
-          AND visited_at >= (SELECT start_ts FROM month_ts)
-        GROUP BY member_id
-        HAVING COUNT(*) > 0
-      )
-      SELECT
-        m.id, m.full_name, m.document_number,
-        ue.plan_name,
-        cc.available_credits,
-        mv.cnt  AS visits_this_month,
-        mv.last_visit
-      FROM unpaid_enrolled ue
-      JOIN members m        ON m.id  = ue.member_id
-      JOIN credits_calc cc  ON cc.member_id = ue.member_id
-      JOIN month_visits mv  ON mv.member_id = ue.member_id
-      ORDER BY mv.last_visit ASC
-      LIMIT 10
-    `),
+export async function getFollowUpLists(gymId: string): Promise<FollowUpLists> {
+  const followUp = (where: ReturnType<typeof sql>, orderBy: ReturnType<typeof sql>) =>
+    db.execute<FollowUpRow>(sql`
+      SELECT m.id, m.full_name, s.plan_name, s.end_date::text AS end_date, s.days_left,
+             s.days_since_expiry, s.credits_left, s.status,
+             lv.last_visit::text AS last_visit,
+             s.today - lv.last_visit AS days_since_last_visit,
+             count(*) OVER ()::int AS total
+      FROM member_standing s
+      JOIN members m ON m.id = s.member_id
+      LEFT JOIN LATERAL (
+        SELECT max(v.visit_date) AS last_visit FROM visits v WHERE v.member_id = m.id
+      ) lv ON true
+      WHERE s.gym_id = ${gymId}::uuid
+        AND s.member_active
+        AND NOT s.has_upcoming
+        AND ${where}
+      ORDER BY ${orderBy}
+      LIMIT ${FOLLOW_UP_LIMIT}
+    `)
 
-    // Unpaid members who did NOT visit this month — ordered by last visit ever (longest absent first)
-    db.execute<UnpaidRow>(sql`
-      WITH ${base},
-      visited_ids AS (
-        SELECT DISTINCT member_id
-        FROM visits
-        WHERE gym_id = ${gymId}::uuid
-          AND visited_at >= (SELECT start_ts FROM month_ts)
-      ),
-      last_visit_ever AS (
-        SELECT member_id, MAX(visited_at) AS last_visit
-        FROM visits
-        WHERE gym_id = ${gymId}::uuid
-        GROUP BY member_id
-      )
-      SELECT
-        m.id, m.full_name, m.document_number,
-        ue.plan_name,
-        cc.available_credits,
-        0              AS visits_this_month,
-        lve.last_visit
-      FROM unpaid_enrolled ue
-      JOIN members m        ON m.id  = ue.member_id
-      JOIN credits_calc cc  ON cc.member_id = ue.member_id
-      LEFT JOIN visited_ids vi  ON vi.member_id  = ue.member_id
-      LEFT JOIN last_visit_ever lve ON lve.member_id = ue.member_id
-      WHERE vi.member_id IS NULL
-      ORDER BY lve.last_visit ASC NULLS LAST
-      LIMIT 10
-    `),
+  const recent = sql`lv.last_visit > s.today - ${RECENT_VISIT_DAYS}::int`
+  const lapsed = sql`s.status IN ('grace', 'expired')`
+
+  const [lapsedComing, lapsedAway, expiringSoon, outOfCredits] = await Promise.all([
+    followUp(sql`${lapsed} AND ${recent}`, sql`lv.last_visit DESC, m.full_name`),
+    followUp(sql`${lapsed} AND (lv.last_visit IS NULL OR NOT ${recent})`, sql`s.end_date DESC, m.full_name`),
+    followUp(sql`s.status = 'active' AND s.days_left <= ${EXPIRING_SOON_DAYS}`, sql`s.days_left, m.full_name`),
+    followUp(
+      sql`s.status = 'active' AND s.plan_type = 'credits' AND s.credits_left <= 0`,
+      sql`s.end_date, m.full_name`,
+    ),
   ])
 
   return {
-    visiting: visitingRows.map(toUnpaidMember),
-    absent:   absentRows.map(toUnpaidMember),
+    lapsedComing: toList(lapsedComing),
+    lapsedAway: toList(lapsedAway),
+    expiringSoon: toList(expiringSoon),
+    outOfCredits: toList(outOfCredits),
   }
+}
+
+// Members still marked active who neither pay nor come: expired (past grace)
+// or never paid, with no visit, period or sign-up in the last STALE_AFTER_DAYS.
+// Members in grace or with a current/upcoming period are never included.
+export async function getStaleMembers(gymId: string): Promise<StaleMember[]> {
+  const rows = await db.execute<{ id: string; full_name: string; status: 'expired' | 'no_plan'; last_activity: string }>(sql`
+    SELECT id, full_name, status, last_activity::text AS last_activity
+    FROM (
+      SELECT m.id, m.full_name, s.status, s.today,
+             COALESCE(GREATEST(lv.last_visit, s.end_date - 1), m.joined_at, m.created_at::date) AS last_activity
+      FROM member_standing s
+      JOIN members m ON m.id = s.member_id
+      LEFT JOIN LATERAL (
+        SELECT max(v.visit_date) AS last_visit FROM visits v WHERE v.member_id = m.id
+      ) lv ON true
+      WHERE s.gym_id = ${gymId}::uuid
+        AND s.member_active
+        AND s.status IN ('expired', 'no_plan')
+        AND NOT s.has_upcoming
+    ) t
+    WHERE last_activity <= today - ${STALE_AFTER_DAYS}::int
+    ORDER BY last_activity, full_name
+  `)
+
+  return rows.map((r) => ({
+    id: r.id,
+    fullName: r.full_name,
+    status: r.status,
+    lastActivity: r.last_activity,
+  }))
+}
+
+// Marks the given members inactive. Scoped to the gym, so ids from another
+// gym are ignored. Returns how many were changed.
+export async function deactivateMembers(gymId: string, memberIds: string[]): Promise<number> {
+  if (memberIds.length === 0) return 0
+  const updated = await db
+    .update(members)
+    .set({ active: false })
+    .where(and(eq(members.gymId, gymId), inArray(members.id, memberIds), eq(members.active, true)))
+    .returning({ id: members.id })
+  return updated.length
 }
 
 export async function getVisitsChartData(

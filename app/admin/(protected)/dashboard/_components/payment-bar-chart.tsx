@@ -52,8 +52,8 @@ function renderLabel({
 
 export function PaymentBarChart({ paid, unpaid }: Props) {
   const data = [
-    { name: 'Pagaron', value: paid, color: '#335C81' },
-    { name: 'Sin pago', value: unpaid, color: '#65AFFF' },
+    { name: 'Al día', value: paid, color: '#335C81' },
+    { name: 'Sin cuota vigente', value: unpaid, color: '#65AFFF' },
   ].filter((d) => d.value > 0)
 
   if (data.length === 0) {
