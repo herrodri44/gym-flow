@@ -288,6 +288,19 @@ Not scheduled. Pull into Active work when needed.
 - "Olvidé mi contraseña": `resetPasswordForEmail` + `/reset-password` +
   Supabase SMTP. Superadmin reset covers the urgent case today.
 
+**Infrastructure**
+- Move off Supabase (database and auth) so the app doesn't depend on the
+  free plan's pause rules and the keep-alive cron. Requested 2026-10-24, not
+  urgent. The database is plain Postgres via Drizzle and moves easily (e.g.
+  Neon free tier, which sleeps but never pauses). Auth is the real work:
+  login, `app_metadata.role`, member portal accounts created with the
+  service-role key, superadmin password resets and `proxy.ts` all use
+  Supabase Auth. A replacement (e.g. Better Auth on our own Postgres) means
+  rewriting those flows and migrating users' password hashes from
+  `auth.users` without forcing resets. Also replaces the hand-applied RLS
+  (Phase 3) with app-level checks only. Plan it as its own phase with a dry
+  run, like the billing cutover.
+
 **Observability**
 - Log rate-limit hits in `proxy.ts`: `{ event: 'rate_limit.hit', ip, path, gymSlug }`.
 - Slow-query logging: warn when a domain call exceeds 800 ms.
