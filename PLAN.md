@@ -220,7 +220,6 @@ How it works:
   `tests/integration/{billing,dashboard}.test.ts` (real Postgres, `npm run test:integration`).
 
 Remaining:
-- [ ] Manual QA locally (checklist in the session notes / below in the PR).
 - [x] Production dry run (2026-10-05): 308 paid → 308 periods, 39
   pending/overdue deleted, 0 duplicate visit days. Only 4 of 209 active
   members end up with a current period: Mystik records few of the payments
@@ -233,8 +232,7 @@ Remaining:
   `~/gymdex-backups/prod-before-0006-2026-10-24T1547.dump` → 0006 +
   `grace_days = 14` in one transaction → pushed `de39307`, deployed.
   Result: 308 periods, 181 grace, 27 never paid, 1 active.
-- [ ] Production smoke test: dashboard, one kiosk check-in, register and
-  delete a test payment, run the keep-alive from Vercel → Cron Jobs.
+- [x] Production smoke test passed (2026-10-24), including the keep-alive.
 - [ ] ~2026-11-07: lower `grace_days` to 7.
 - [ ] Follow-up migration 0007 once verified in production: drop
   `payment_records.period_start/period_end/status/enrollment_id`, the
