@@ -122,8 +122,11 @@ pooler), `DATABASE_URL_DIRECT` (drizzle-kit), `UPSTASH_REDIS_REST_URL`,
 
 The project is on the Supabase free plan, which pauses after about a week of
 inactivity (it happened 2026-10-14). `vercel.json` runs
-`/api/cron/keep-alive` daily (`SELECT 1`, and the request goes through
-`proxy.ts`, which calls Supabase Auth). `/api/cron/*` is public in
+`/api/cron/keep-alive` daily: `SELECT 1` plus anon-key calls to the REST
+and Auth APIs. `SELECT 1` alone ran daily and the project was still flagged
+for pausing on 2026-10-30, so the API calls were added. Supabase doesn't
+publish what counts as activity: if it's flagged again, Pro or the move off
+Supabase (Backlog) are the remaining options. `/api/cron/*` is public in
 `proxy.ts`; each route checks `CRON_SECRET`. The free plan has no
 downloadable backups: take a `pg_dump` before any migration.
 
